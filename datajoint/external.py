@@ -8,7 +8,7 @@ from .table import Table
 from .declare import EXTERNAL_TABLE_ROOT
 from . import s3
 from .utils import safe_write, safe_copy
-
+from . import errors
 CACHE_SUBFOLDING = (2, 2)   # (2, 2) means  "0123456789abcd" will be saved as "01/23/0123456789abcd"
 SUPPORT_MIGRATED_BLOBS = True   # support blobs migrated from datajoint 0.11.*
 
@@ -125,7 +125,10 @@ class ExternalTable(Table):
         if self.spec['protocol'] == 's3':
             return self.s3.get(external_path)
         if self.spec['protocol'] == 'file':
-            return Path(external_path).read_bytes()
+            try: 
+               return Path(external_path).read_bytes()
+            except FileNotFoundError:
+                raise errors.MissingExternalFile('Missing external file %s' % external_path) from None
         assert False
 
     def _remove_external_file(self, external_path):

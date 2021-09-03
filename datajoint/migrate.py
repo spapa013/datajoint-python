@@ -33,6 +33,13 @@ Proceed?
 
 
 def _migrate_dj011_blob(schema, default_store):
+    warning_string = """External storage was lost on 2/8/2020, as a result the external for this stack is unavailable. 
+                    The message you are seeing now is a result of a migration to dj 0.12.9 on 8/25/2021. If you would like this stack 
+                    repopulated, please contact the pipeline engineer """
+    warning_string_arr = np.array([warning_string])
+    packed_warning_string = blob.pack(warning_string_arr)
+    
+
     query = schema.connection.query
 
     LEGACY_HASH_SIZE = 43
@@ -42,16 +49,17 @@ def _migrate_dj011_blob(schema, default_store):
         '`{db}`.`~external`'.format(db=schema.database))
 
     # get referencing tables
-    refs = [{k.lower(): v for k, v in elem.items()} for elem in query("""
+    refs = query("""
     SELECT concat('`', table_schema, '`.`', table_name, '`')
             as referencing_table, column_name, constraint_name
     FROM information_schema.key_column_usage
     WHERE referenced_table_name="{tab}" and referenced_table_schema="{db}"
     """.format(
         tab=legacy_external.table_name,
-        db=legacy_external.database), as_dict=True).fetchall()]
+        db=legacy_external.database), as_dict=True).fetchall()
 
     for ref in refs:
+        print(ref)
         # get comment
         column = query(
             'SHOW FULL COLUMNS FROM {referencing_table}'
@@ -59,13 +67,18 @@ def _migrate_dj011_blob(schema, default_store):
                 **ref), as_dict=True).fetchone()
 
         store, comment = re.match(
-            r':external(-(?P<store>.+))?:(?P<comment>.*)',
+            r':external(-(?P<store>.+?))?:(?P<comment>.*)',
             column['Comment']).group('store', 'comment')
+        
+        print(store)
+        print(comment)
+        
 
         # get all the hashes from the reference
         hashes = {x[0] for x in query(
             'SELECT `{column_name}` FROM {referencing_table}'.format(
                 **ref))}
+    
 
         # sanity check make sure that store suffixes match
         if store is None:
@@ -75,6 +88,7 @@ def _migrate_dj011_blob(schema, default_store):
 
         # create new-style external table
         ext = schema.external[store or default_store]
+        
 
         # add the new-style reference field
         temp_suffix = 'tempsub'
@@ -91,6 +105,16 @@ def _migrate_dj011_blob(schema, default_store):
             print('Column already added')
             pass
 
+        # Copy references into the new external table
+        # No Windows! Backslashes will cause problems
+
+        contents_hash_function = {
+            'file': lambda ext, relative_path: dj.hash.uuid_from_file(
+                str(Path(ext.spec['location'], relative_path))),
+            's3': lambda ext, relative_path: dj.hash.uuid_from_buffer(
+                ext.s3.get(relative_path))
+        }
+
         for _hash, size in zip(*legacy_external.fetch('hash', 'size')):
             if _hash in hashes:
                 relative_path = str(Path(schema.database, _hash).as_posix())
@@ -99,7 +123,18 @@ def _migrate_dj011_blob(schema, default_store):
                 if ext.spec['protocol'] == 's3':
                     contents_hash = dj.hash.uuid_from_buffer(ext._download_buffer(external_path))
                 else:
-                    contents_hash = dj.hash.uuid_from_file(external_path)
+                    try:
+                        contents_hash = dj.hash.uuid_from_file(external_path)
+                    except FileNotFoundError:
+                        ## save new content under old filename
+                        print(f"{external_path} not found")
+                        print("inserting warning message in-place")
+                        contents_hash = dj.hash.uuid_from_buffer(init_string=warning_string)
+                        safe_write(external_path,packed_warning_string)
+                        
+                        
+                        
+                        
                 ext.insert1(dict(
                     filepath=relative_path,
                     size=size,
@@ -142,16 +177,15 @@ def _migrate_dj011_blob(schema, default_store):
 
     # Drop the old external table but make sure it's no longer referenced
     # get referencing tables
-    refs = [{k.lower(): v for k, v in elem.items()} for elem in query("""
+    refs = query("""
     SELECT concat('`', table_schema, '`.`', table_name, '`') as
         referencing_table, column_name, constraint_name
     FROM information_schema.key_column_usage
     WHERE referenced_table_name="{tab}" and referenced_table_schema="{db}"
     """.format(
         tab=legacy_external.table_name,
-        db=legacy_external.database), as_dict=True).fetchall()]
+        db=legacy_external.database), as_dict=True).fetchall()
 
     assert not refs, 'Some references still exist'
-
     # drop old external table
     legacy_external.drop_quick()

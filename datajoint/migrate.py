@@ -188,4 +188,3 @@ def _migrate_dj011_blob(schema, default_store):
 
     assert not refs, 'Some references still exist'
     # drop old external table
-    legacy_external.drop_quick()

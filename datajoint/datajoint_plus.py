@@ -1,6 +1,4 @@
 from os import confstr_names, error
-from typing import Iterable, Mapping
-from typing_extensions import OrderedDict
 import datajoint as dj
 from datajoint.expression import QueryExpression
 import inspect
@@ -56,7 +54,7 @@ def validate_rows_and_generate_hash(rows, **kwargs):
         validated = True
     elif isinstance(rows, list) or isinstance(rows, tuple):
         for row in rows:
-            assert isinstance(row, Mapping), 'Cannot hash attributes unless row attributes are named. Try inserting a pandas dataframe, a DataJoint expression or a list of dictionaries.'
+            assert isinstance(row, collections.abc.Mapping), 'Cannot hash attributes unless row attributes are named. Try inserting a pandas dataframe, a DataJoint expression or a list of dictionaries.'
         validated = True
     else:
         raise ValidationError('Format of rows not recognized. Try inserting a list of dictionaries, a DataJoint expression or a pandas dataframe.')

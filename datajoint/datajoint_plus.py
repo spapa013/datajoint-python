@@ -190,7 +190,7 @@ class Base:
                 if not hasattr(cls, set_default):
                     setattr(cls, set_default, False)
                 else:
-                    if not isinstance(set_default, bool):
+                    if not isinstance(getattr(cls, set_default), bool):
                         raise NotImplementedError(f'Class property "{set_default}" must be a boolean.')
 
             # ensure one attribute for "hash_name"
@@ -404,7 +404,7 @@ class MasterBase(Base):
                 if not hasattr(cls, set_default):
                     setattr(cls, set_default, False)
                 else:
-                    if not isinstance(set_default, bool):
+                    if not isinstance(getattr(cls, set_default), bool):
                         raise NotImplementedError(f'Class property "{set_default}" must be a boolean.')
 
         super().init_validation()
@@ -623,7 +623,7 @@ class PartBase(Base):
                 if not hasattr(cls.master, set_default):
                     setattr(cls.master, set_default, False)
                 else:
-                    if not isinstance(set_default, bool):
+                    if not isinstance(getattr(cls.master, set_default), bool):
                         raise NotImplementedError(f'Class property "{set_default}" must be a boolean.') 
 
             part_hash_len = None

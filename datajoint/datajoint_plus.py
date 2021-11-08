@@ -182,12 +182,19 @@ class Base:
         assert hasattr(cls, 'enable_hashing') and isinstance(cls.enable_hashing, bool), 'Subclasses of Base must implement boolean property "enable_hashing".'
                 
         if cls.enable_hashing:
-            for required in ['hash_name', 'hashed_attrs', 'hash_group', 'add_hash_info_to_header']:
+            for required in ['hash_name', 'hashed_attrs']:
                 if not hasattr(cls, required) or getattr(cls, required) is None:
                     raise NotImplementedError(f'Hashing requires class to implement the property "{required}".')
-            
+
+            for set_default in ['hash_group', 'add_hash_info_to_header']:
+                if not hasattr(cls, set_default):
+                    setattr(cls, set_default, False)
+                else:
+                    if not isinstance(set_default, bool):
+                        raise NotImplementedError(f'Class property "{set_default}" must be a boolean.')
+
             # ensure one attribute for "hash_name"
-            if type(cls.hash_name) == list or type(cls.hash_name) == tuple:
+            if isinstance(cls.hash_name, list) or isinstance(cls.hash_name, tuple):
                 if len(cls.hash_name) > 1:
                     raise NotImplementedError(f'Only one attribute allowed in "hash_name".')
                 else:
@@ -387,18 +394,18 @@ class Base:
 
 
 class MasterBase(Base):
-    hash_table_name = False
-    hash_part_table_names = False
-
     def __init_subclass__(cls, **kwargs):
         cls.init_validation()
 
     @classmethod
     def init_validation(cls):
         if cls.enable_hashing:
-            for required in ['hash_table_name', 'hash_part_table_names']:
-                if not hasattr(cls, required) or getattr(cls, required) is None:
-                    raise NotImplementedError(f'Hashing requires class to implement the property "{required}".')
+            for set_default in ['hash_table_name', 'hash_part_table_names']:
+                if not hasattr(cls, set_default):
+                    setattr(cls, set_default, False)
+                else:
+                    if not isinstance(set_default, bool):
+                        raise NotImplementedError(f'Class property "{set_default}" must be a boolean.')
 
         super().init_validation()
 
@@ -601,10 +608,6 @@ class PartBase(Base):
     @classmethod
     def init_validation(cls):
         if cls.enable_hashing:
-            for required in ['hash_name', 'hashed_attrs', 'hash_group', 'add_hash_info_to_header']:
-                if not hasattr(cls, required) or getattr(cls, required) is None:
-                    raise NotImplementedError(f'Hashing requires class to implement the property "{required}".')
-
             if hasattr(cls, 'hash_table_name'):
                 raise ValidationError(f'Part tables cannot contain "hash_table_name" property. To hash the table name of part tables, set hash_part_table_names=True in master table.')
 
@@ -618,7 +621,10 @@ class PartBase(Base):
 
             for set_default in ['hash_part_table_names']:
                 if not hasattr(cls.master, set_default):
-                    setattr(cls.master, set_default, False) 
+                    setattr(cls.master, set_default, False)
+                else:
+                    if not isinstance(set_default, bool):
+                        raise NotImplementedError(f'Class property "{set_default}" must be a boolean.') 
 
             part_hash_len = None
             if cls.hash_name in cls.heading.names:
@@ -642,7 +648,7 @@ class PartBase(Base):
 
     @classmethod
     def insert(cls, rows, replace=False, skip_duplicates=False, ignore_extra_fields=False, allow_direct_insert=None, reload_dependencies=False, insert_to_master=False, insert_to_master_kws={}, skip_hashing=False, constant_attrs={}, overwrite_rows=False):
-        assert isinstance(insert_to_master, bool), 'insert_to_master must be a boolean.'
+        assert isinstance(insert_to_master, bool), '"insert_to_master" must be a boolean.'
         
         cls.load_dependencies(force=reload_dependencies)
         

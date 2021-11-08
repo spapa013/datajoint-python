@@ -428,7 +428,7 @@ class MasterBase(Base):
         cls_parts = [getattr(cls, d) for d in dir(cls) if inspect.isclass(getattr(cls, d)) and issubclass(getattr(cls, d), dj.Part)]
         for cls_part in [p.full_table_name for p in cls_parts]:
             if cls_part not in super().parts(cls):
-                warnings.warn('Part table defined in class definition not found in DataJoint graph. Consider running again with reload_dependencies=True.')
+                warnings.warn('Part table defined in class definition not found in DataJoint graph. Reload dependencies.')
 
         if not as_cls:
             return super().parts(cls, as_objects=as_objects)

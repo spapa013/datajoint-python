@@ -19,6 +19,7 @@ import warnings
 
 __version__ = "0.0.2"
 
+
 class classproperty:
     def __init__(self, f):
         self.f = f
@@ -651,7 +652,6 @@ class PartBase(Base):
 
     @classmethod
     def _insert(cls, rows, replace=False, skip_duplicates=False, ignore_extra_fields=False, allow_direct_insert=False, insert_to_master=False, insert_to_master_kws={}):
-        restrict_parts
         try:
             if insert_to_master:
                 cls.master.insert(rows=rows, **{'ignore_extra_fields': True, 'skip_duplicates': True}) if insert_to_master_kws == {} else cls.master.insert(rows=rows, **insert_to_master_kws)

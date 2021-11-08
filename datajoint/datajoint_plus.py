@@ -581,7 +581,7 @@ class MasterBase(Base):
             cls.insert_validation()
         
         if insert_to_parts is not None:
-            assert cls.has_parts(reload_dependencies=reload_dependencies), 'No part tables found.'
+            assert cls.has_parts(parts_kws=dict(reload_dependencies=True)), 'No part tables found.'
             insert_to_parts = cls._format_parts(insert_to_parts)
 
         rows = cls._prepare_insert(rows, constant_attrs=constant_attrs, overwrite_rows=overwrite_rows, skip_hashing=skip_hashing)

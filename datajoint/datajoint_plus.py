@@ -5,7 +5,7 @@ import inspect
 import collections
 import pandas as pd
 import hashlib
-import json
+import simplejson
 import re
 from enum import Enum
 import numpy as np
@@ -43,7 +43,7 @@ def generate_hash(rows, add_dict_to_all_rows:dict=None):
         for k, v in add_dict_to_all_rows.items():
             df[k] = v
     df = df.sort_index(axis=1).sort_values(by=[*df.columns])
-    encoded = json.dumps(df.to_dict(orient='records')).encode()
+    encoded = simplejson.dumps(df.to_dict(orient='records')).encode()
     dhash = hashlib.md5()
     dhash.update(encoded)
     return dhash.hexdigest()

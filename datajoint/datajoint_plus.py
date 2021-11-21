@@ -698,7 +698,7 @@ class Part(PartBase, dj.Part):
 
 class VirtualModule:
     @classmethod
-    def insert(cls, **kwargs):
+    def insert(cls, *args, **kwargs):
         raise AttributeError('Table insertion not allowed with virtual modules. ')
 
 class VirtualLookup(VirtualModule, Lookup):

@@ -219,6 +219,7 @@ class Base:
   
     @classmethod
     def insert_validation(cls):
+        assert cls.__module__ != 'datajoint.user_tables', 'Table insertion not allowed with virtual modules.'
         cls.is_insert_validated = True
 
     @classmethod
@@ -693,4 +694,24 @@ class Imported(MasterBase, dj.Imported):
 
 
 class Part(PartBase, dj.Part):
+    pass
+
+class VirtualModule:
+    @classmethod
+    def insert(cls, **kwargs):
+        raise AttributeError('Table insertion not allowed with virtual modules. ')
+
+class VirtualLookup(VirtualModule, Lookup):
+    pass
+
+class VirtualManual(VirtualModule, Manual):
+    pass
+
+class VirtualComputed(VirtualModule, Computed):
+    pass
+
+class VirtualImported(VirtualModule, Imported):
+    pass
+
+class VirtualPart(VirtualModule, Part):
     pass

@@ -704,10 +704,7 @@ class Part(PartBase, dj.Part):
 
 # VIRTUAL MODULES
 
-class VirtualModule:
-    def __init_subclass__(cls):
-        cls.hash_name, cls.hashed_attrs = cls.parse_hash_info_from_header()
-    
+class VirtualModule:   
     @classmethod
     def parse_hash_info_from_header(cls):
         hash_name = None
@@ -750,20 +747,25 @@ class VirtualModule:
     
 
 class VirtualLookup(VirtualModule, Lookup):
-    pass
+    def __init_subclass__(cls):
+        cls.hash_name, cls.hashed_attrs = cls.parse_hash_info_from_header()
 
 
 class VirtualManual(VirtualModule, Manual):
-    pass
+    def __init_subclass__(cls):
+        cls.hash_name, cls.hashed_attrs = cls.parse_hash_info_from_header()
 
 
 class VirtualComputed(VirtualModule, Computed):
-    pass
+    def __init_subclass__(cls):
+        cls.hash_name, cls.hashed_attrs = cls.parse_hash_info_from_header()
 
 
 class VirtualImported(VirtualModule, Imported):
-    pass
+    def __init_subclass__(cls):
+        cls.hash_name, cls.hashed_attrs = cls.parse_hash_info_from_header()
 
 
 class VirtualPart(VirtualModule, Part):
-    pass
+    def __init_subclass__(cls):
+        cls.hash_name, cls.hashed_attrs = cls.parse_hash_info_from_header()

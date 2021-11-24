@@ -35,6 +35,7 @@ class ValidationError(dj.DataJointError):
 class OverwriteError(dj.DataJointError):
     pass
 
+_vm_modification_err = 'Table modification not allowed with virtual modules. '
 
 def generate_hash(rows, add_dict_to_all_rows:dict=None):
     df = pd.DataFrame(rows)
@@ -174,7 +175,8 @@ class Base:
     hash_name = None
     hashed_attrs = None
     hash_group = False
-    add_hash_info_to_header = True
+    add_hash_name_to_header = True
+    add_hashed_attrs_to_header = True
     _hash_len = None
 
     @classmethod
@@ -214,12 +216,12 @@ class Base:
             if not isinstance(cls.hash_group, bool):
                 raise NotImplementedError(f'property "hash_group" must be boolean.')
 
-            if cls.add_hash_info_to_header:
-                cls._add_hash_info_to_header()
+            if cls.add_hash_name_to_header or cls.add_hashed_attrs_to_header:
+                cls._add_hash_info_to_header(hash_name=cls.add_hash_name_to_header, hashed_attrs=cls.add_hashed_attrs_to_header)
   
     @classmethod
     def insert_validation(cls):
-        assert cls.__module__ != 'datajoint.user_tables', 'Table insertion not allowed with virtual modules.'
+        assert cls.__module__ != 'datajoint.user_tables', _vm_modification_err
         cls.is_insert_validated = True
 
     @classmethod
@@ -301,7 +303,7 @@ class Base:
         return cls & {cls.hash_name: hash}
 
     @classmethod
-    def _add_hash_info_to_header(cls):
+    def _add_hash_info_to_header(cls, hash_name=True, hashed_attrs=True):
         inds, contents, _ = parse_definition(cls.definition)
         headers = contents['headers']
 
@@ -312,10 +314,14 @@ class Base:
             # create header
             header = """#"""
 
-        # append hash info to header 
-        header += f" | hash_name = {cls.hash_name}; hashed_attrs = "
-        for i, h in enumerate(cls.hashed_attrs):
-            header += f"{h}, " if i+1 < len(cls.hashed_attrs) else f"{h}"
+        # append hash info to header
+        if hash_name:
+            header += f" | hash_name = {cls.hash_name};" 
+        
+        if hashed_attrs:
+            header += f" | hashed_attrs = "
+            for i, h in enumerate(cls.hashed_attrs):
+                header += f"{h}, " if i+1 < len(cls.hashed_attrs) else f"{h};"
         
         try:
             # replace existing header with modified header
@@ -696,22 +702,68 @@ class Imported(MasterBase, dj.Imported):
 class Part(PartBase, dj.Part):
     pass
 
+# VIRTUAL MODULES
+
 class VirtualModule:
+    def __init_subclass__(cls):
+        hash_name, hashed_attrs = cls.parse_hash_info_from_header()
+    
+    @classmethod
+    def parse_hash_info_from_header(cls):
+        hash_name = None
+        hashed_attrs = None
+        header = cls.heading.table_info['comment']
+        match = re.findall(r'\|(.*?);', header)
+        if match:
+            for match in matches:
+                result = re.findall('\w+', match)
+                if result[0] == 'hash_name':
+                    hash_name = result[1]
+                if result[0] == 'hashed_attrs':
+                    hashed_attrs = result[1:]
+        return hash_name, hashed_attrs
+        
+
     @classmethod
     def insert(cls, *args, **kwargs):
-        raise AttributeError('Table insertion not allowed with virtual modules. ')
+        raise AttributeError(_vm_modification_err)
+    
+    @classmethod
+    def _update(cls, *args, **kwargs):
+        raise AttributeError(_vm_modification_err)
+    
+    @classmethod
+    def delete(cls, *args, **kwargs):
+        raise AttributeError(_vm_modification_err)
+    
+    @classmethod
+    def delete_quick(cls, *args, **kwargs):
+        raise AttributeError(_vm_modification_err)
+    
+    @classmethod
+    def drop(cls, *args, **kwargs):
+        raise AttributeError(_vm_modification_err)
+    
+    @classmethod
+    def drop_quick(cls, *args, **kwargs):
+        raise AttributeError(_vm_modification_err)
+    
 
 class VirtualLookup(VirtualModule, Lookup):
     pass
 
+
 class VirtualManual(VirtualModule, Manual):
     pass
+
 
 class VirtualComputed(VirtualModule, Computed):
     pass
 
+
 class VirtualImported(VirtualModule, Imported):
     pass
+
 
 class VirtualPart(VirtualModule, Part):
     pass

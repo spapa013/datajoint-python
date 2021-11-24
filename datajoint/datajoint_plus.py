@@ -706,7 +706,7 @@ class Part(PartBase, dj.Part):
 
 class VirtualModule:
     def __init_subclass__(cls):
-        hash_name, hashed_attrs = cls.parse_hash_info_from_header()
+        cls.hash_name, cls.hashed_attrs = cls.parse_hash_info_from_header()
     
     @classmethod
     def parse_hash_info_from_header(cls):

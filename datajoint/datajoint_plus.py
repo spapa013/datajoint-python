@@ -707,19 +707,15 @@ class Part(PartBase, dj.Part):
 class VirtualModule:   
     @classmethod
     def parse_hash_info_from_header(cls):
-        hash_name = None
-        hashed_attrs = None
         header = cls.heading.table_info['comment']
         match = re.findall(r'\|(.*?);', header)
         if match:
             for match in matches:
                 result = re.findall('\w+', match)
                 if result[0] == 'hash_name':
-                    hash_name = result[1]
+                    cls.hash_name = result[1]
                 if result[0] == 'hashed_attrs':
-                    hashed_attrs = result[1:]
-        return hash_name, hashed_attrs
-        
+                    cls.hashed_attrs = result[1:]
 
     @classmethod
     def insert(cls, *args, **kwargs):
@@ -747,25 +743,20 @@ class VirtualModule:
     
 
 class VirtualLookup(VirtualModule, Lookup):
-    def __init_subclass__(cls):
-        cls.hash_name, cls.hashed_attrs = cls.parse_hash_info_from_header()
+    pass
 
 
 class VirtualManual(VirtualModule, Manual):
-    def __init_subclass__(cls):
-        cls.hash_name, cls.hashed_attrs = cls.parse_hash_info_from_header()
+    pass
 
 
 class VirtualComputed(VirtualModule, Computed):
-    def __init_subclass__(cls):
-        cls.hash_name, cls.hashed_attrs = cls.parse_hash_info_from_header()
+    pass
 
 
 class VirtualImported(VirtualModule, Imported):
-    def __init_subclass__(cls):
-        cls.hash_name, cls.hashed_attrs = cls.parse_hash_info_from_header()
+    pass
 
 
 class VirtualPart(VirtualModule, Part):
-    def __init_subclass__(cls):
-        cls.hash_name, cls.hashed_attrs = cls.parse_hash_info_from_header()
+    pass

@@ -708,8 +708,8 @@ class VirtualModule:
     @classmethod
     def parse_hash_info_from_header(cls):
         header = cls.heading.table_info['comment']
-        match = re.findall(r'\|(.*?);', header)
-        if match:
+        matches = re.findall(r'\|(.*?);', header)
+        if matches:
             for match in matches:
                 result = re.findall('\w+', match)
                 if result[0] == 'hash_name':

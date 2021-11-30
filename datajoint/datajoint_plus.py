@@ -1,3 +1,11 @@
+"""
+Classes and methods for datajoint_plus, an extension to DataJoint. 
+
+The primary use case of datajoint_plus is to enable automatic hashing in DataJoint tables and to provide features to enhance the DataJoint master-part relationship. 
+
+datajoint_plus disables table modification from virtual modules. 
+"""
+
 from os import confstr_names, error
 import datajoint as dj
 from datajoint.expression import QueryExpression
@@ -17,7 +25,7 @@ import copy
 import warnings
 
 
-__version__ = "0.0.3"
+__version__ = "0.0.4"
 
 
 class classproperty:
@@ -37,11 +45,19 @@ class OverwriteError(dj.DataJointError):
 
 _vm_modification_err = 'Table modification not allowed with virtual modules. '
 
-def generate_hash(rows, add_dict_to_all_rows:dict=None):
+def generate_hash(rows, add_constant_columns:dict=None):
+    """
+    Generates hash for provided rows. 
+
+    :param rows (pd.DataFrame, dict): Rows to hash. `type(rows)` must be able to instantiate a pandas dataframe.
+    :param add_constant_columns (dict):  Each key:value pair will be passed to the dataframe to be hashed as `df[k]=v`, adding a column length `len(df)` with name `k` and filled with values `v`. 
+
+    :returns: md5 hash
+    """
     df = pd.DataFrame(rows)
-    if add_dict_to_all_rows is not None:
-        assert isinstance(add_dict_to_all_rows, dict)
-        for k, v in add_dict_to_all_rows.items():
+    if add_constant_columns is not None:
+        assert isinstance(add_constant_columns, dict), f' arg add_constant_columns must be Python dictionary instance.'
+        for k, v in add_constant_columns.items():
             df[k] = v
     df = df.sort_index(axis=1).sort_values(by=[*df.columns])
     encoded = simplejson.dumps(df.to_dict(orient='records')).encode()
@@ -51,6 +67,9 @@ def generate_hash(rows, add_dict_to_all_rows:dict=None):
 
 
 def _validate_rows_for_hashing(rows):
+    """
+    Validates rows for `generate_hash`.
+    """
     validated = False
     if isinstance(rows, pd.DataFrame):
         pass
@@ -65,19 +84,37 @@ def _validate_rows_for_hashing(rows):
 
         
 def validate_and_generate_hash(rows, **kwargs):
+    """
+    Generates hash for provided rows with row validation for DataJoint.
+
+    :rows: see `generate_hash`
+    :kwargs: passed to `generate_hash`
+
+    :returns: hash from `generate_hash`
+    """
     _validate_rows_for_hashing(rows)
     return generate_hash(rows, **kwargs)
     
 
-def split_full_table_name(full_table_name):
+def split_full_table_name(full_table_name:str):
     """
-    param: full_table_name
-    returns: database, table_name
+    Splits full_table_name from DataJoint tables and returns a tuple of (database, table_name).
+
+    :param (str): full_table_name from DataJoint tables
+    
+    :returns (tuple): (database, table_name)
     """
     return tuple(s.strip('`') for s in full_table_name.split('.'))
 
 
 def format_table_name(table_name, snake_case=False, part=False):
+    """
+    Splits full_table_name from DataJoint tables and returns a tuple of (database, table_name).
+
+    :param (str): full_table_name from DataJoint tables
+    
+    :returns (tuple): (database, table_name)
+    """
     if not snake_case:
         if not part:
             return table_name.title().replace('_','').replace('#','')
@@ -91,6 +128,22 @@ def format_table_name(table_name, snake_case=False, part=False):
 
 
 def parse_definition(definition):
+    """
+    Parses DataJoint definitions. Extracts the following line types, where lines are separated by newlines `\\n`:
+        - headers: a line that starts with hash `#`.
+        - dependencies: a line that does not start with hash `#` and contains an arrow `->`.
+        - attributes: a line that contains a colon `:`, and may contain a hash `#`, as long as the colon `:` precedes the hash `#`.
+        - divider: a line that does not start with a hash `#` and contains a DataJoint divider `---`.
+        - non-matches: a line that does not meet any of the above criteria. 
+        
+    :param definition: DataJoint table definition to be parsed.
+
+    :returns: 
+        parsed_inds (dict): dictionary of line types and matching line indexes. 
+        parsed_contents (dict): a dictionary of line types and matching line contents.
+        parsed_stats (dict): a dictionary of line types and a summary of the number of line matches for each type. 
+    """
+
     lines = re.split('\n', definition) # seperate definition lines
     lines_without_spaces = [re.sub(' +', '', l) for l in lines]
 
@@ -139,6 +192,14 @@ def parse_definition(definition):
 
 
 def reform_definition(parsed_inds, parsed_contents):
+    """
+    Reforms DataJoint definition after parsing by `parse_definition`. 
+
+    :param parsed_inds (dict): see `parse_definition`
+    :param parsed_contents (dict): see `parse_definition`
+
+    :returns: DataJoint definition
+    """
     n_lines = len(np.concatenate([i for i in parsed_inds.values()]))
     content_list = [''] * n_lines
     for ii, cc in zip(parsed_inds.values(), parsed_contents.values()):
@@ -153,6 +214,9 @@ def reform_definition(parsed_inds, parsed_contents):
 
 
 def _is_overwrite_validated(attr, group, overwrite_rows):
+    """
+    Checks if attr is in group and is overwriteable.
+    """
     assert isinstance(overwrite_rows, bool), 'overwrite_rows must be a boolean.'
     if not overwrite_rows:
         if attr in group:
@@ -181,14 +245,17 @@ class Base:
 
     @classmethod
     def init_validation(cls):
-        assert hasattr(cls, 'enable_hashing') and isinstance(cls.enable_hashing, bool), 'Subclasses of Base must implement boolean property "enable_hashing".'
+        """
+        Validation for initialization of subclasses of abstract class Base. 
+        """
+        assert hasattr(cls, 'enable_hashing') and isinstance(cls.enable_hashing, bool), 'Subclasses of datajoint_plus.Base must implement boolean property "enable_hashing".'
                 
         if cls.enable_hashing:
             for required in ['hash_name', 'hashed_attrs']:
                 if not hasattr(cls, required) or getattr(cls, required) is None:
                     raise NotImplementedError(f'Hashing requires class to implement the property "{required}".')
 
-            for set_default in ['hash_group', 'add_hash_info_to_header']:
+            for set_default in ['hash_group']:
                 if not hasattr(cls, set_default):
                     setattr(cls, set_default, False)
                 else:
@@ -218,14 +285,20 @@ class Base:
 
             if cls.add_hash_name_to_header or cls.add_hashed_attrs_to_header:
                 cls._add_hash_info_to_header(hash_name=cls.add_hash_name_to_header, hashed_attrs=cls.add_hashed_attrs_to_header)
-  
+
     @classmethod
     def insert_validation(cls):
+        """
+        Validation for insertion to DataJoint tables that are subclasses of abstract class Base. 
+        """
         assert cls.__module__ != 'datajoint.user_tables', _vm_modification_err
         cls.is_insert_validated = True
 
     @classmethod
     def load_dependencies(cls, force=False):
+        """
+        Loads dependencies into DataJoint networkx graph. 
+        """
         load = False
         if not force:
             if not cls.connection.dependencies._loaded:
@@ -244,8 +317,17 @@ class Base:
                 confirmation.layout.display = None
 
     @classmethod
-    def add_constant_attrs_to_rows(cls, rows, constant_attrs:dict={}, overwrite_rows=False):    
-        assert isinstance(constant_attrs, dict), 'arg "constant_attrs" must be a dict type.'
+    def add_constant_attrs_to_rows(cls, rows, constant_attrs:dict={}, overwrite_rows=False):
+        """
+        Adds attributes to all rows.
+
+        :param rows (pd.DataFrame, QueryExpression, list, tuple): rows to pass to DataJoint `insert`. 
+        :param constant_attrs (dict): Python dictionary to add to every row of rows
+        :overwrite_rows (bool): Whether to overwrite key/ values in rows. If False, conflicting keys will raise a ValidationError.
+
+        :returns: modified rows
+        """   
+        assert isinstance(constant_attrs, dict), 'arg "constant_attrs" must be a Python dictionary.'
         
         if constant_attrs != {}:
             if isinstance(rows, pd.DataFrame):
@@ -273,16 +355,30 @@ class Base:
 
     @classmethod
     def include_attrs(cls, *args):
+        """
+        Returns a projection of cls that includes only the attributes passed as args.
+
+        Note: The projection is NOT guaranteed to have unique rows, even if it contains only primary keys. 
+        """
         return cls.proj(..., **{a: '""' for a in cls.heading.names if a not in args}).proj(*[a for a in cls.heading.names if a in args])
     
     @classmethod
     def exclude_attrs(cls, *args):
+        """
+        Returns a projection of cls that excludes all attributes passed as args. 
+        
+        Note: The projection is NOT guaranteed to have unique rows, even if it contains only primary keys. 
+        """
         return cls.proj(..., **{a: '""' for a in cls.heading.names if a in args}).proj(*[a for a in cls.heading.names if a not in args])
           
     @staticmethod
-    def _hash_name_type_validation(hash_name, hash_name_type_parsed):
+    def _hash_name_type_validation(hash_name, hash_name_type):
+        """
+        Validates hash_name type and returns hash_len
+        """
         hash_name_type_error_msg = f'hash_name "{hash_name}" must be a "varchar" type > 0 and <= 32 characters'
-
+        
+        hash_name_type_parsed = re.findall('\w+', hash_name_type)
         if 'varchar' not in hash_name_type_parsed:
             raise ValidationError(hash_name_type_error_msg)
 
@@ -294,6 +390,18 @@ class Base:
 
     @classmethod
     def restrict_with_hash(cls, hash, hash_name=None):
+        """
+        Returns table restricted with hash. 
+
+        :param hash: hash to restrict with
+        :param hash_name: name of attribute that contains hashes. 
+            If hash_name is not None:
+                Will use hash_name instead of cls.hash_name
+            If hash_name is None:
+                Will use cls.hash_name or raise ValidationError if cls.hash_name is None
+
+        :returns: Table restricted with hash. 
+        """
         if hash_name is None and hasattr(cls, 'hash_name'):
             hash_name = cls.hash_name
 
@@ -304,6 +412,12 @@ class Base:
 
     @classmethod
     def _add_hash_info_to_header(cls, hash_name=True, hashed_attrs=True):
+        """
+        Modifies definition header to include hash_name and hashed_attrs with a parseable syntax. 
+
+        :param hash_name (bool): Whether to add hash_name to header
+        :param hashed_attrs (bool): Whether to add hashed_attrs to header
+        """
         inds, contents, _ = parse_definition(cls.definition)
         headers = contents['headers']
 
@@ -345,9 +459,15 @@ class Base:
 
     @classmethod
     def add_hash_to_rows(cls, rows, hash_table_name=False, overwrite_rows=False):
-        if not cls.is_insert_validated:
-            cls.insert_validation()
-        
+        """
+        Adds hash to rows.
+
+        :param rows (pd.DataFrame, QueryExpression, list, tuple): rows to pass to DataJoint `insert`.
+        :param hash_table_name (bool): Whether to include table_name in rows for hashing
+        :overwrite_rows (bool): Whether to overwrite key/ values in rows. If False, conflicting keys will raise a ValidationError. 
+
+        :returns: modified rows
+        """      
         if hash_table_name:
             table_name = {'#__table_name__': cls.table_name}
         else:
@@ -371,15 +491,18 @@ class Base:
             rows_to_hash = rows[[*cls.hashed_attrs]]
 
             if cls.hash_group:
-                rows[cls.hash_name] = generate_hash(rows_to_hash, add_dict_to_all_rows=table_name)[:cls._hash_len]
+                rows[cls.hash_name] = generate_hash(rows_to_hash, add_constant_columns=table_name)[:cls._hash_len]
 
             else:
-                rows[cls.hash_name] = [generate_hash([row], add_dict_to_all_rows=table_name)[:cls._hash_len] for row in rows_to_hash.to_dict(orient='records')]
+                rows[cls.hash_name] = [generate_hash([row], add_constant_columns=table_name)[:cls._hash_len] for row in rows_to_hash.to_dict(orient='records')]
                 
         return rows
 
     @classmethod
     def _prepare_insert(cls, rows, constant_attrs, overwrite_rows=False, skip_hashing=False):
+        """
+        Prepares rows for insert by checking if table has been validated for insert, adds constant_attrs and performs hashing. 
+        """
         
         if not cls.is_insert_validated:
             cls.insert_validation()
@@ -406,6 +529,9 @@ class MasterBase(Base):
 
     @classmethod
     def init_validation(cls):
+        """
+        Validation for initialization of subclasses of abstract class MasterBase. 
+        """
         if cls.enable_hashing:
             for set_default in ['hash_table_name', 'hash_part_table_names']:
                 if not hasattr(cls, set_default):
@@ -418,18 +544,34 @@ class MasterBase(Base):
 
     @classmethod
     def insert_validation(cls):
+        """
+        Validation for insertion into subclasses of abstract class MasterBase. 
+        """
         if cls.enable_hashing:
             if cls.hash_name not in cls.heading.names:
                 raise ValidationError(f'Attribute "{cls.hash_name}" in property "hash_name" must be present in table heading.')
 
             # hash_name type validation
-            cls._hash_len = cls._hash_name_type_validation(cls.hash_name, re.findall('\w+', cls.heading.attributes[cls.hash_name].type))
+            cls._hash_len = cls._hash_name_type_validation(cls.hash_name, cls.heading.attributes[cls.hash_name].type)
         
         super().insert_validation()
 
         
     @classmethod
     def parts(cls, as_objects=False, as_cls=False, reload_dependencies=False):
+        """
+        Wrapper around Datajoint function `parts` that enables returning parts as part_names, objects, or classes, and enables reloading of Datajoint networkx graph dependencies.
+
+        :param as_objects: 
+            If True, returns part tables as objects
+            If False, returns part table names
+        :param as_cls:
+            If True, returns part table classes (will override as_objects)
+        :param reload_dependencies: 
+            If True, will force reload Datajoint networkx graph dependencies. 
+
+        :returns: list
+        """
         cls.load_dependencies(force=reload_dependencies)
 
         cls_parts = [getattr(cls, d) for d in dir(cls) if inspect.isclass(getattr(cls, d)) and issubclass(getattr(cls, d), dj.Part)]
@@ -445,16 +587,25 @@ class MasterBase(Base):
         
     @classmethod
     def number_of_parts(cls, parts_kws={}):
+        """
+        Returns the number of part tables belonging to cls. 
+        """
         return len(cls.parts(**parts_kws))
 
     
     @classmethod
     def has_parts(cls, parts_kws={}):
+        """
+        Returns True if cls has part tables. 
+        """
         return cls.number_of_parts(parts_kws) > 0
 
     
     @classmethod
     def _format_parts(cls, parts):
+        """
+        Formats the part tables in arg parts. 
+        """
         if not isinstance(parts, list) and not isinstance(parts, tuple):
             parts = [parts]
         
@@ -476,6 +627,14 @@ class MasterBase(Base):
 
     @classmethod
     def restrict_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, parts_kws={}):
+        """
+        Restricts part tables of cls. 
+
+        :param part_restr: restriction to restrict part tables with.
+        :param include_parts (part table or list of part tables): part table(s) to restrict. If None, will restrict all part tables of cls.
+        :param exclude_parts (part table or list of part tables): part table(s) to exclude from restriction
+        :parts_kws (dict): kwargs to pass to cls.parts. If no kwargs are provided, `as_cls=True` will be passed to cls.parts. 
+        """
         assert cls.has_parts(parts_kws), 'No part tables found.'
         parts_kws = {k:v for k,v in parts_kws.items() if k not in ['reload_dependencies']}
 
@@ -491,7 +650,14 @@ class MasterBase(Base):
         return [p & part_restr for p in parts]
 
     @classmethod
-    def union_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, parts_kws={}):        
+    def union_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, parts_kws={}):
+        """
+        Returns union of part table primary keys after optional restriction. Requires all part tables in union to have identical primary keys. 
+
+        :params: see `restrict_parts`.
+
+        :returns: numpy array object
+        """  
         return np.sum([p.proj() for p in cls.restrict_parts(include_parts=include_parts, exclude_parts=exclude_parts, part_restr=part_restr, parts_kws=parts_kws)])
 
 #     @classmethod
@@ -500,6 +666,20 @@ class MasterBase(Base):
 
     @classmethod
     def join_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, join_method=None, join_with_master=False, parts_kws={}):
+        """
+        Returns join of part tables after optional restriction. 
+
+        :params part_restr, include_parts, exclude_parts, parts_kws: see `restrict_parts`.
+        :param join_method (str):
+            'primary_only' - will project out secondary keys and will only join on primary keys
+            'rename_secondaries' - will add the part table to all secondary keys
+            'rename_collisions' - will add the part table name to secondary keys that are present in more than one part table
+            'rename_all' - will add the part table name to all primary and secondary keys
+
+        :param join_with_master (bool): If True, parts will be joined with cls before returning. 
+
+        :returns: numpy array object
+        """
         parts = cls.restrict_parts(include_parts=include_parts, exclude_parts=exclude_parts, part_restr=part_restr, parts_kws=parts_kws)
         
         if join_with_master:
@@ -513,7 +693,7 @@ class MasterBase(Base):
             except:
                 traceback.print_exc()
                 msg = 'Join unsuccessful. Try one of the following: join_method = '
-                for i, f in enumerate(JoinMethod):
+                for i, j in enumerate(JoinMethod):
                     msg += f'"{j.value}", ' if i+1 < len(JoinMethod) else f'"{j.value}".'
                 print(msg)
                 return
@@ -533,7 +713,7 @@ class MasterBase(Base):
 
         else:
             msg = f'join_method "{join_method}" not implemented. Available methods: '
-            for i, f in enumerate(JoinMethod):
+            for i, j in enumerate(JoinMethod):
                 msg += f'"{j.value}", ' if i+1 < len(JoinMethod) else f'"{j.value}".'
             raise NotImplementedError(msg)
 
@@ -554,10 +734,22 @@ class MasterBase(Base):
 
     @classmethod
     def parts_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, parts_kws={}):
+        """
+        Returns list of part table names that contain the provided hash. 
+
+        :params hash, hash_name, include_parts, exclude_parts, parts_kws: see `restrict_parts_with_hash`
+        """
         return [format_table_name(r.table_name, part=True) for r in cls.restrict_parts_with_hash(hash, hash_name, include_parts, exclude_parts, parts_kws)]
 
     @classmethod
     def restrict_one_part_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, parts_kws={}):
+        """
+        Checks all part tables and returns the part table that contains the provided hash after restricting with {'hash_name': hash}. 
+        
+        If no part table or more than one part table contains the provided hash, then ValidationError will be raised. 
+
+        :params hash, hash_name, include_parts, exclude_parts, parts_kws: see `restrict_parts_with_hash`
+        """
         restrs = cls.restrict_parts_with_hash(hash, hash_name, include_parts, exclude_parts, parts_kws)
         
         if len(restrs) > 1:
@@ -571,7 +763,20 @@ class MasterBase(Base):
     r1pwh = restrict_one_part_with_hash # alias for restrict_one_part_with_hash
 
     @classmethod
-    def restrict_parts_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, parts_kws={}):       
+    def restrict_parts_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, parts_kws={}):
+        """
+        Returns part tables restricted with hash. 
+
+        :param hash: hash to restrict with
+        :param hash_name: name of attribute that contains hashes. 
+            If hash_name is not None:
+                Will use hash_name instead of cls.hash_name
+            If hash_name is None:
+                Will use cls.hash_name or raise ValidationError if cls.hash_name is None
+        :params include_parts, exclude_parts, parts_kws: see `restrict_parts`
+
+        :returns: list of parts restricted by {'hash_name': hash}. A part will only be included in the returned list if the part contains the hash_name in its heading and also contains the provided hash. 
+        """  
         if hash_name is None and hasattr(cls, 'hash_name'):
             hash_name = cls.hash_name
 
@@ -584,6 +789,17 @@ class MasterBase(Base):
 
     @classmethod
     def insert(cls, rows, replace=False, skip_duplicates=False, ignore_extra_fields=False, allow_direct_insert=None, reload_dependencies=False, insert_to_parts=None, insert_to_parts_kws={}, skip_hashing=False, constant_attrs={}, overwrite_rows=False):
+        """
+        Insert rows to cls.
+
+        :params rows, replace, skip_duplicates, ignore_extra_fields, allow_direct_insert: see DataJoint insert function.
+        :param reload_dependencies (bool): force reload DataJoint networkx graph dependencies before insert.
+        :param insert_to_parts (part table or list of part tables): part table(s) to insert to after master table insert.
+        :param insert_to_parts_kws (dict): kwargs to pass to part table insert function.
+        :param skip_hashing (bool): If True, hashing will be skipped if hashing is enabled. 
+        :param constant_attrs (dict): Python dictionary to add to every row of rows
+        :overwrite_rows (bool): Whether to overwrite key/ values in rows. If False, conflicting keys will raise a ValidationError.
+        """
         if not cls.is_insert_validated:
             cls.insert_validation()
         
@@ -593,10 +809,6 @@ class MasterBase(Base):
 
         rows = cls._prepare_insert(rows, constant_attrs=constant_attrs, overwrite_rows=overwrite_rows, skip_hashing=skip_hashing)
 
-        cls._insert(rows=rows, replace=replace, skip_duplicates=skip_duplicates, ignore_extra_fields=ignore_extra_fields, allow_direct_insert=allow_direct_insert, insert_to_parts=insert_to_parts, insert_to_parts_kws=insert_to_parts_kws)
-    
-    @classmethod
-    def _insert(cls, rows, replace=False, skip_duplicates=False, ignore_extra_fields=False, allow_direct_insert=False, insert_to_parts=None, insert_to_parts_kws={}):
         super().insert(cls(), rows=rows, replace=replace, skip_duplicates=skip_duplicates, ignore_extra_fields=ignore_extra_fields, allow_direct_insert=allow_direct_insert)
         
         if insert_to_parts is not None:
@@ -614,6 +826,9 @@ class PartBase(Base):
 
     @classmethod
     def init_validation(cls):
+        """
+        Validation for initialization of subclasses of abstract class PartBase. 
+        """
         if cls.enable_hashing:
             if hasattr(cls, 'hash_table_name'):
                 raise ValidationError(f'Part tables cannot contain "hash_table_name" property. To hash the table name of part tables, set hash_part_table_names=True in master table.')
@@ -622,6 +837,9 @@ class PartBase(Base):
 
     @classmethod
     def insert_validation(cls):
+        """
+        Validation for insertion into subclasses of abstract class PartBase. 
+        """
         if cls.enable_hashing:
             if not (cls.hash_name in cls.heading.names or cls.hash_name in cls.master.heading.names):
                 raise ValidationError(f'Attribute "{cls.hash_name}" in property "hash_name" must be present in the part table or master table heading.')
@@ -635,11 +853,11 @@ class PartBase(Base):
 
             part_hash_len = None
             if cls.hash_name in cls.heading.names:
-                part_hash_len = cls._hash_name_type_validation(cls.hash_name, re.findall('\w+', cls.heading.attributes[cls.hash_name].type))
+                part_hash_len = cls._hash_name_type_validation(cls.hash_name, cls.heading.attributes[cls.hash_name].type)
 
             master_hash_len = None
             if cls.hash_name in cls.master.heading.names:
-                master_hash_len = cls._hash_name_type_validation(cls.hash_name, re.findall('\w+', cls.master.heading.attributes[cls.hash_name].type))
+                master_hash_len = cls._hash_name_type_validation(cls.hash_name, cls.master.heading.attributes[cls.hash_name].type)
 
             if (part_hash_len is not None) and (master_hash_len is not None):
                 assert part_hash_len == master_hash_len, f'hash_name "{cls.hash_name}" varchar length mismatch. Part table length is {part_hash_len} but master length is {master_hash_len}'
@@ -655,16 +873,23 @@ class PartBase(Base):
 
     @classmethod
     def insert(cls, rows, replace=False, skip_duplicates=False, ignore_extra_fields=False, allow_direct_insert=None, reload_dependencies=False, insert_to_master=False, insert_to_master_kws={}, skip_hashing=False, constant_attrs={}, overwrite_rows=False):
+        """
+        Insert rows to cls.
+
+        :params rows, replace, skip_duplicates, ignore_extra_fields, allow_direct_insert: see DataJoint insert function
+        :param reload_dependencies (bool): force reload DataJoint networkx graph dependencies before insert.
+        :param insert_to_master (bool): whether to insert to master table before inserting to part.
+        :param insert_to_master_kws (dict): kwargs to pass to master table insert function.
+        :param skip_hashing (bool): If True, hashing will be skipped if hashing is enabled. 
+        :param constant_attrs (dict): Python dictionary to add to every row of rows
+        :overwrite_rows (bool): Whether to overwrite key/ values in rows. If False, conflicting keys will raise a ValidationError.
+        """
         assert isinstance(insert_to_master, bool), '"insert_to_master" must be a boolean.'
         
         cls.load_dependencies(force=reload_dependencies)
         
         rows = cls._prepare_insert(rows, constant_attrs=constant_attrs, overwrite_rows=overwrite_rows, skip_hashing=skip_hashing)
         
-        cls._insert(rows=rows, replace=replace, skip_duplicates=skip_duplicates, ignore_extra_fields=ignore_extra_fields, allow_direct_insert=allow_direct_insert, insert_to_master=insert_to_master, insert_to_master_kws=insert_to_master_kws)
-
-    @classmethod
-    def _insert(cls, rows, replace=False, skip_duplicates=False, ignore_extra_fields=False, allow_direct_insert=False, insert_to_master=False, insert_to_master_kws={}):
         try:
             if insert_to_master:
                 cls.master.insert(rows=rows, **{'ignore_extra_fields': True, 'skip_duplicates': True}) if insert_to_master_kws == {} else cls.master.insert(rows=rows, **insert_to_master_kws)
@@ -707,6 +932,9 @@ class Part(PartBase, dj.Part):
 class VirtualModule:   
     @classmethod
     def parse_hash_info_from_header(cls):
+        """
+        Parses hash_name and hashed_attrs from DataJoint table header and sets properties in class. 
+        """
         header = cls.heading.table_info['comment']
         matches = re.findall(r'\|(.*?);', header)
         if matches:

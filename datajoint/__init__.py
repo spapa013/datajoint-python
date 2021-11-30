@@ -51,10 +51,10 @@ create_virtual_module = VirtualModule   # Aliases for VirtualModule
 import warnings
 import re
 import requests
-from .datajoint_plus import __version__ as dj_plus_version
+from .datajoint_plus import __version__ as datajoint_plus_version
 
-dj_plus_github = requests.get(f"https://raw.githubusercontent.com/spapa013/datajoint-python/12.9/datajoint/datajoint_plus.py")
-text = re.search('__version__.*', dj_plus_github.text).group()
-dj_plus_github_version = text.split('=')[1].strip(' "'" '") if len(text.split('='))>1 else text.strip(' "'" '")
-if dj_plus_version != dj_plus_github_version:
-    warnings.warn(f'Imported datajoint.datajoint_plus version, {dj_plus_version} does not match the source version on Github, {dj_plus_github_version}.')
+datajoint_plus_github = requests.get(f"https://raw.githubusercontent.com/spapa013/datajoint-python/12.9/datajoint/datajoint_plus.py")
+text = re.search('__version__.*', datajoint_plus_github.text).group()
+datajoint_plus_github_version = text.split('=')[1].strip(' "'" '") if len(text.split('='))>1 else text.strip(' "'" '")
+if datajoint_plus_version != datajoint_plus_github_version:
+    warnings.warn(f'Imported datajoint.datajoint_plus version, {datajoint_plus_version} does not match the source version on Github, {datajoint_plus_github_version}.')

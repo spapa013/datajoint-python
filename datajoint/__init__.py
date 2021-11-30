@@ -46,3 +46,15 @@ from .migrate import migrate_dj011_external_blob_storage_to_dj012
 ERD = Di = Diagram                      # Aliases for Diagram
 schema = Schema                         # Aliases for Schema
 create_virtual_module = VirtualModule   # Aliases for VirtualModule
+
+# check for latest datajoint_plus version
+import warnings
+import re
+import requests
+from .datajoint_plus import __version__ as dj_plus_version
+
+dj_plus_github = requests.get(f"https://raw.githubusercontent.com/spapa013/datajoint-python/12.9/datajoint/datajoint_plus.py")
+text = re.search('__version__.*', dj_plus_github.text).group()
+dj_plus_github_version = text.split('=')[1].strip(' "'" '") if len(text.split('='))>1 else text.strip(' "'" '")
+if dj_plus_version != dj_plus_github_version:
+    warnings.warn(f'Imported datajoint.datajoint_plus version, {dj_plus_version} does not match the source version on Github, {dj_plus_github_version}.')

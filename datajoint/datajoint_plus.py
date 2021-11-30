@@ -25,7 +25,7 @@ import copy
 import warnings
 
 
-__version__ = "0.0.5"
+__version__ = "0.0.6"
 
 
 class classproperty:
@@ -775,6 +775,12 @@ class MasterBase(Base):
 
         :returns: list
         """
+        if hash_name is None and hasattr(cls, 'hash_name'):
+            hash_name = cls.hash_name
+
+        if hash_name is None:
+            raise ValidationError('Table does not have "hash_name" defined, provide it to restrict with hash.')
+
         parts = cls.restrict_parts_with_hash(hash, hash_name, include_parts, exclude_parts, parts_kws)
         parts = [p for p in parts if hash_name in p.heading.names and len(p)>0]
         return [format_table_name(r.table_name, part=True) for r in parts]
@@ -796,6 +802,12 @@ class MasterBase(Base):
 
         :returns: part table after restriction
         """
+        if hash_name is None and hasattr(cls, 'hash_name'):
+            hash_name = cls.hash_name
+
+        if hash_name is None:
+            raise ValidationError('Table does not have "hash_name" defined, provide it to restrict with hash.')
+
         parts = cls.restrict_parts_with_hash(hash, hash_name, include_parts, exclude_parts, parts_kws)
         parts = [p for p in parts if hash_name in p.heading.names and len(p)>0]
 

@@ -25,7 +25,7 @@ import copy
 import warnings
 
 
-__version__ = "0.0.7"
+__version__ = "0.0.8"
 
 
 class classproperty:
@@ -247,44 +247,36 @@ class Base:
     def init_validation(cls):
         """
         Validation for initialization of subclasses of abstract class Base. 
-        """
-        assert hasattr(cls, 'enable_hashing') and isinstance(cls.enable_hashing, bool), 'Subclasses of datajoint_plus.Base must implement boolean property "enable_hashing".'
-                
-        if cls.enable_hashing:
-            for required in ['hash_name', 'hashed_attrs']:
-                if not hasattr(cls, required) or getattr(cls, required) is None:
-                    raise NotImplementedError(f'Hashing requires class to implement the property "{required}".')
+        """                            
+        for attr in ['hash_name', 'hashed_attrs']:
+            if getattr(cls, attr) is None and cls.enable_hashing:
+                raise NotImplementedError(f'Hashing requires class to implement the property "{attr}".')
+        
+        assert not isinstance(cls.hash_name, bool) or not isinstance(cls.hashed_attrs, bool), 'Neither "hash_name" nor "hashed_attrs" can be boolean.'
 
-            for set_default in ['hash_group']:
-                if not hasattr(cls, set_default):
-                    setattr(cls, set_default, False)
-                else:
-                    if not isinstance(getattr(cls, set_default), bool):
-                        raise NotImplementedError(f'Class property "{set_default}" must be a boolean.')
-
-            # ensure one attribute for "hash_name"
+        # ensure one attribute for "hash_name"
+        if cls.hash_name is not None:
             if isinstance(cls.hash_name, list) or isinstance(cls.hash_name, tuple):
                 if len(cls.hash_name) > 1:
                     raise NotImplementedError(f'Only one attribute allowed in "hash_name".')
                 else:
                     cls.hash_name = cls.hash_name[0]
 
-            # ensure "hashed_attrs" wrapped in list or tuple
+        # ensure "hashed_attrs" wrapped in list or tuple
+        if cls.hashed_attrs is not None:
             if not isinstance(cls.hashed_attrs, list) and not isinstance(cls.hashed_attrs, tuple):
                 cls.hashed_attrs = [cls.hashed_attrs]
             else:
                 cls.hashed_attrs = cls.hashed_attrs
 
-            # ensure hash_name and hashed_attrs are disjoint
+        # ensure hash_name and hashed_attrs are disjoint
+        if cls.hash_name is not None and cls.hashed_attrs is not None:
             if not set((cls.hash_name,)).isdisjoint(cls.hashed_attrs):
                 raise NotImplementedError(f'attributes in "hash_name" and "hashed_attrs" must be disjoint.')
-
-            # ensure hash_group is bool
-            if not isinstance(cls.hash_group, bool):
-                raise NotImplementedError(f'property "hash_group" must be boolean.')
-
+        
+        if cls.hash_name is not None:
             if cls.add_hash_name_to_header or cls.add_hashed_attrs_to_header:
-                cls._add_hash_info_to_header(hash_name=cls.add_hash_name_to_header, hashed_attrs=cls.add_hashed_attrs_to_header)
+                cls._add_hash_info_to_header(add_hash_name=cls.add_hash_name_to_header, add_hashed_attrs=cls.add_hashed_attrs_to_header if cls.hashed_attrs is not None else False)
 
     @classmethod
     def insert_validation(cls):
@@ -322,7 +314,7 @@ class Base:
         Adds attributes to all rows.
 
         :param rows (pd.DataFrame, QueryExpression, list, tuple): rows to pass to DataJoint `insert`. 
-        :param constant_attrs (dict): Python dictionary to add to every row of rows
+        :param constant_attrs (dict): Python dictionary to add to every row in rows
         :overwrite_rows (bool): Whether to overwrite key/ values in rows. If False, conflicting keys will raise a ValidationError.
 
         :returns: modified rows
@@ -411,12 +403,12 @@ class Base:
         return cls & {cls.hash_name: hash}
 
     @classmethod
-    def _add_hash_info_to_header(cls, hash_name=True, hashed_attrs=True):
+    def _add_hash_info_to_header(cls, add_hash_name=True, add_hashed_attrs=True):
         """
         Modifies definition header to include hash_name and hashed_attrs with a parseable syntax. 
 
-        :param hash_name (bool): Whether to add hash_name to header
-        :param hashed_attrs (bool): Whether to add hashed_attrs to header
+        :param add_hash_name (bool): Whether to add hash_name to header
+        :param add_hashed_attrs (bool): Whether to add hashed_attrs to header
         """
         inds, contents, _ = parse_definition(cls.definition)
         headers = contents['headers']
@@ -429,10 +421,10 @@ class Base:
             header = """#"""
 
         # append hash info to header
-        if hash_name:
+        if add_hash_name:
             header += f" | hash_name = {cls.hash_name};" 
         
-        if hashed_attrs:
+        if add_hashed_attrs:
             header += f" | hashed_attrs = "
             for i, h in enumerate(cls.hashed_attrs):
                 header += f"{h}, " if i+1 < len(cls.hashed_attrs) else f"{h};"
@@ -524,6 +516,9 @@ class Base:
 
 
 class MasterBase(Base):
+    hash_table_name = False
+    hash_part_table_names = False
+
     def __init_subclass__(cls, **kwargs):
         cls.init_validation()
 
@@ -532,13 +527,8 @@ class MasterBase(Base):
         """
         Validation for initialization of subclasses of abstract class MasterBase. 
         """
-        if cls.enable_hashing:
-            for set_default in ['hash_table_name', 'hash_part_table_names']:
-                if not hasattr(cls, set_default):
-                    setattr(cls, set_default, False)
-                else:
-                    if not isinstance(getattr(cls, set_default), bool):
-                        raise NotImplementedError(f'Class property "{set_default}" must be a boolean.')
+        for attr in ['hash_table_name', 'hash_part_table_names']:
+            assert isinstance(getattr(cls, attr), bool), f'Attribute "{attr}" must be a boolean.'
 
         super().init_validation()
 
@@ -547,7 +537,7 @@ class MasterBase(Base):
         """
         Validation for insertion into subclasses of abstract class MasterBase. 
         """
-        if cls.enable_hashing:
+        if cls.hash_name is not None:
             if cls.hash_name not in cls.heading.names:
                 raise ValidationError(f'Attribute "{cls.hash_name}" in property "hash_name" must be present in table heading.')
 
@@ -859,9 +849,8 @@ class PartBase(Base):
         """
         Validation for initialization of subclasses of abstract class PartBase. 
         """
-        if cls.enable_hashing:
-            if hasattr(cls, 'hash_table_name'):
-                raise ValidationError(f'Part tables cannot contain "hash_table_name" property. To hash the table name of part tables, set hash_part_table_names=True in master table.')
+        if hasattr(cls, 'hash_table_name'):
+            raise ValidationError(f'Part tables cannot contain "hash_table_name" property. To hash the table name of part tables, set hash_part_table_names=True in master table.')
 
         super().init_validation()
 
@@ -870,16 +859,17 @@ class PartBase(Base):
         """
         Validation for insertion into subclasses of abstract class PartBase. 
         """
-        if cls.enable_hashing:
+        
+        for set_default in ['hash_part_table_names']:
+            if not hasattr(cls.master, set_default):
+                setattr(cls.master, set_default, False)
+            else:
+                if not isinstance(getattr(cls.master, set_default), bool):
+                    raise NotImplementedError(f'Attribute "{set_default}" must be boolean.') 
+                    
+        if cls.hash_name is not None:
             if not (cls.hash_name in cls.heading.names or cls.hash_name in cls.master.heading.names):
-                raise ValidationError(f'Attribute "{cls.hash_name}" in property "hash_name" must be present in the part table or master table heading.')
-
-            for set_default in ['hash_part_table_names']:
-                if not hasattr(cls.master, set_default):
-                    setattr(cls.master, set_default, False)
-                else:
-                    if not isinstance(getattr(cls.master, set_default), bool):
-                        raise NotImplementedError(f'Class property "{set_default}" must be a boolean.') 
+                raise ValidationError(f'Attribute "{cls.hash_name}" in "hash_name" must be present in the part table or master table heading.')
 
             part_hash_len = None
             if cls.hash_name in cls.heading.names:
@@ -911,7 +901,7 @@ class PartBase(Base):
         :param insert_to_master (bool): whether to insert to master table before inserting to part.
         :param insert_to_master_kws (dict): kwargs to pass to master table insert function.
         :param skip_hashing (bool): If True, hashing will be skipped if hashing is enabled. 
-        :param constant_attrs (dict): Python dictionary to add to every row of rows
+        :param constant_attrs (dict): Python dictionary to add to every row in rows
         :overwrite_rows (bool): Whether to overwrite key/ values in rows. If False, conflicting keys will raise a ValidationError.
         """
         assert isinstance(insert_to_master, bool), '"insert_to_master" must be a boolean.'

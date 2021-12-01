@@ -25,7 +25,7 @@ import copy
 import warnings
 
 
-__version__ = "0.0.10"
+__version__ = "0.0.11"
 
 
 class classproperty:
@@ -239,9 +239,9 @@ class Base:
     hash_name = None
     hashed_attrs = None
     hash_group = False
-    add_hash_name_to_header = True
-    add_hash_group_to_header = True
-    add_hashed_attrs_to_header = True
+    _add_hash_name_to_header = True
+    _add_hash_group_to_header = True
+    _add_hashed_attrs_to_header = True
     _hash_len = None
 
     @classmethod
@@ -249,7 +249,7 @@ class Base:
         """
         Validation for initialization of subclasses of abstract class Base. 
         """
-        for attr in ['enable_hashing', 'hash_group', 'add_hash_name_to_header', 'add_hashed_attrs_to_header']:
+        for attr in ['enable_hashing', 'hash_group', '_add_hash_name_to_header', '_add_hashed_attrs_to_header']:
             assert isinstance(getattr(cls, attr), bool), f'"{attr}" must be boolean.'           
 
         for attr in ['hash_name', 'hashed_attrs']:
@@ -281,8 +281,8 @@ class Base:
                 raise NotImplementedError(f'attributes in "hash_name" and "hashed_attrs" must be disjoint.')
         
         if cls.hash_name is not None or cls.hashed_attrs is not None or cls.hash_group:
-            if cls.add_hash_name_to_header or cls.add_hashed_attrs_to_header or cls.add_hash_group_to_header:
-                cls._add_hash_info_to_header(add_hash_name=cls.add_hash_name_to_header if cls.hash_name is not None else False, add_hashed_attrs=cls.add_hashed_attrs_to_header if cls.hashed_attrs is not None else False)
+            if cls._add_hash_name_to_header or cls._add_hashed_attrs_to_header or cls._add_hash_group_to_header:
+                cls._add_hash_info_to_header(add_hash_name=cls._add_hash_name_to_header if cls.hash_name is not None else False, add_hashed_attrs=cls._add_hashed_attrs_to_header if cls.hashed_attrs is not None else False)
 
     @classmethod
     def insert_validation(cls):
@@ -979,7 +979,8 @@ class VirtualModule:
                 if result[0] == 'hash_name':
                     cls.hash_name = result[1]
                 if result[0] == 'hash_group':
-                    cls.hash_group = result[1]
+                    if result[1] == 'True':
+                        cls.hash_group = True
                 if result[0] == 'hashed_attrs':
                     cls.hashed_attrs = result[1:]
 

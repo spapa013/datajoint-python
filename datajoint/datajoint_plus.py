@@ -423,8 +423,17 @@ class Base:
 
         if hash_name is None:
             raise ValidationError('Table does not have "hash_name" defined, provide it to restrict with hash.')
-            
-        return cls & {cls.hash_name: hash}
+        
+        pattern = re.compile(r"\((\d+)\)")  # find the number in the parentheses
+        length_of_hash = int(pattern.findall(cls.heading.attributes[hash_name].type)[0])
+        if len(hash) < length_of_hash:
+            warnings.warn(f"Hash provided is shorted than the hashes stored in {cls.__name__}, will return entries with partially matched hashes.")
+            return cls & f'{hash_name} like "%%{hash}%%"'
+        elif len(hash) > length_of_hash:
+            warnings.warn(f"Hash provided is longer than the hashes stored in {cls.__name__}. The provided hash will be chopped to match the length.")
+            return cls & {cls.hash_name: hash[:length_of_hash]}
+        else:
+            return cls & {cls.hash_name: hash}
 
     @classmethod
     def _add_hash_info_to_header(cls, add_hash_name=False, add_hashed_attrs=False, add_hash_group=False, add_hash_table_name=False, add_hash_part_table_names=False):

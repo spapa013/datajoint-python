@@ -25,7 +25,7 @@ import copy
 import warnings
 
 
-__version__ = "0.0.12"
+__version__ = "0.0.13"
 
 
 class classproperty:
@@ -420,7 +420,7 @@ class Base:
         """
         if hash_name is None and hasattr(cls, 'hash_name'):
             hash_name = cls.hash_name
-
+        
         if hash_name is None:
             raise ValidationError('Table does not have "hash_name" defined, provide it to restrict with hash.')
             
@@ -494,6 +494,8 @@ class Base:
 
         :returns: modified rows
         """
+        assert cls.hashed_attrs is not None, 'Table must have hashed_attrs defined. Check if hashing was enabled for this table.'
+
         hash_table_name = True if cls.hash_table_name or (issubclass(cls, dj.Part) and hasattr(cls.master, 'hash_part_table_names') and getattr(cls.master, 'hash_part_table_names')) else False
 
         if hash_table_name:
@@ -988,6 +990,7 @@ class VirtualModule:
 
                 if result[0] == 'hash_name':
                     cls.hash_name = result[1]
+                    cls._hash_len = cls._hash_name_type_validation(cls.hash_name, cls.heading.attributes[cls.hash_name].type)
 
                 if result[0] == 'hash_group':
                     if result[1] == 'True':

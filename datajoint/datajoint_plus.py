@@ -234,13 +234,13 @@ class JoinMethod(Enum):
 
 
 class Base:
-    is_insert_validated = False,
-    enable_hashing = False,
-    hash_name = None,
-    hashed_attrs = None,
-    hash_group = False,
-    add_hash_name_to_header = True,
-    add_hashed_attrs_to_header = True,
+    is_insert_validated = False
+    enable_hashing = False
+    hash_name = None
+    hashed_attrs = None
+    hash_group = False
+    add_hash_name_to_header = True
+    add_hashed_attrs_to_header = True
     _hash_len = None
 
     @classmethod
@@ -249,6 +249,7 @@ class Base:
         Validation for initialization of subclasses of abstract class Base. 
         """
         for attr in ['enable_hashing', 'hash_group', 'add_hash_name_to_header', 'add_hashed_attrs_to_header']:
+            print(getattr(cls, attr))
             assert isinstance(getattr(cls, attr), bool), f'"{attr}" must be boolean.'           
 
         for attr in ['hash_name', 'hashed_attrs']:

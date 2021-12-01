@@ -234,26 +234,31 @@ class JoinMethod(Enum):
 
 
 class Base:
-    is_insert_validated = False
-    enable_hashing = False
-    hash_name = None
-    hashed_attrs = None
-    hash_group = False
-    add_hash_name_to_header = True
-    add_hashed_attrs_to_header = True
+    is_insert_validated = False,
+    enable_hashing = False,
+    hash_name = None,
+    hashed_attrs = None,
+    hash_group = False,
+    add_hash_name_to_header = True,
+    add_hashed_attrs_to_header = True,
     _hash_len = None
 
     @classmethod
     def init_validation(cls):
         """
         Validation for initialization of subclasses of abstract class Base. 
-        """                            
-        for attr in ['hash_name', 'hashed_attrs']:
-            if getattr(cls, attr) is None and cls.enable_hashing:
-                raise NotImplementedError(f'Hashing requires class to implement the property "{attr}".')
-        
-        assert not isinstance(cls.hash_name, bool) or not isinstance(cls.hashed_attrs, bool), 'Neither "hash_name" nor "hashed_attrs" can be boolean.'
+        """
+        for attr in ['enable_hashing', 'hash_group', 'add_hash_name_to_header', 'add_hashed_attrs_to_header']:
+            assert isinstance(getattr(cls, attr), bool), f'"{attr}" must be boolean.'           
 
+        for attr in ['hash_name', 'hashed_attrs']:
+            assert not isinstance(getattr(cls, attr), bool), f'"{attr}" must not be boolean.'
+        
+        if cls.enable_hashing:
+            for required in ['hash_name', 'hashed_attrs']:
+                if getattr(cls, required) is None:
+                    raise NotImplementedError(f'Hashing requires class to implement the property "{required}".')
+        
         # ensure one attribute for "hash_name"
         if cls.hash_name is not None:
             if isinstance(cls.hash_name, list) or isinstance(cls.hash_name, tuple):
@@ -274,9 +279,9 @@ class Base:
             if not set((cls.hash_name,)).isdisjoint(cls.hashed_attrs):
                 raise NotImplementedError(f'attributes in "hash_name" and "hashed_attrs" must be disjoint.')
         
-        if cls.hash_name is not None:
+        if cls.hash_name is not None or cls.hashed_attrs is not None:
             if cls.add_hash_name_to_header or cls.add_hashed_attrs_to_header:
-                cls._add_hash_info_to_header(add_hash_name=cls.add_hash_name_to_header, add_hashed_attrs=cls.add_hashed_attrs_to_header if cls.hashed_attrs is not None else False)
+                cls._add_hash_info_to_header(add_hash_name=cls.add_hash_name_to_header if cls.hash_name is not None else False, add_hashed_attrs=cls.add_hashed_attrs_to_header if cls.hashed_attrs is not None else False)
 
     @classmethod
     def insert_validation(cls):
@@ -284,6 +289,12 @@ class Base:
         Validation for insertion to DataJoint tables that are subclasses of abstract class Base. 
         """
         assert cls.__module__ != 'datajoint.user_tables', _vm_modification_err
+
+        # ensure hash_name and hashed_attrs are disjoint
+        if cls.hash_name is not None and cls.hashed_attrs is not None:
+            if not set((cls.hash_name,)).isdisjoint(cls.hashed_attrs):
+                raise NotImplementedError(f'attributes in "hash_name" and "hashed_attrs" must be disjoint.')
+
         cls.is_insert_validated = True
 
     @classmethod
@@ -528,7 +539,7 @@ class MasterBase(Base):
         Validation for initialization of subclasses of abstract class MasterBase. 
         """
         for attr in ['hash_table_name', 'hash_part_table_names']:
-            assert isinstance(getattr(cls, attr), bool), f'Attribute "{attr}" must be a boolean.'
+            assert isinstance(getattr(cls, attr), bool), f'"{attr}" must be a boolean.'
 
         super().init_validation()
 
@@ -865,7 +876,7 @@ class PartBase(Base):
                 setattr(cls.master, set_default, False)
             else:
                 if not isinstance(getattr(cls.master, set_default), bool):
-                    raise NotImplementedError(f'Attribute "{set_default}" must be boolean.') 
+                    raise NotImplementedError(f'"{set_default}" must be boolean.') 
                     
         if cls.hash_name is not None:
             if not (cls.hash_name in cls.heading.names or cls.hash_name in cls.master.heading.names):

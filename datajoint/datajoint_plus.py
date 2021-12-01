@@ -25,7 +25,7 @@ import copy
 import warnings
 
 
-__version__ = "0.0.11"
+__version__ = "0.0.12"
 
 
 class classproperty:
@@ -235,21 +235,28 @@ class JoinMethod(Enum):
 
 class Base:
     is_insert_validated = False
+
+    # required for hashing
     enable_hashing = False
     hash_name = None
     hashed_attrs = None
+
+    # hash params
     hash_group = False
-    _add_hash_name_to_header = True
-    _add_hash_group_to_header = True
-    _add_hashed_attrs_to_header = True
+    hash_table_name = False
     _hash_len = None
 
+    # header params
+    _add_hash_name_to_header = True
+    _add_hashed_attrs_to_header = True
+    _add_hash_params_to_header = True
+    
     @classmethod
-    def init_validation(cls):
+    def init_validation(cls, **kwargs):
         """
         Validation for initialization of subclasses of abstract class Base. 
         """
-        for attr in ['enable_hashing', 'hash_group', '_add_hash_name_to_header', '_add_hashed_attrs_to_header']:
+        for attr in ['enable_hashing', 'hash_group', 'hash_table_name', '_add_hash_name_to_header', '_add_hash_params_to_header', '_add_hashed_attrs_to_header']:
             assert isinstance(getattr(cls, attr), bool), f'"{attr}" must be boolean.'           
 
         for attr in ['hash_name', 'hashed_attrs']:
@@ -279,10 +286,15 @@ class Base:
         if cls.hash_name is not None and cls.hashed_attrs is not None:
             if not set((cls.hash_name,)).isdisjoint(cls.hashed_attrs):
                 raise NotImplementedError(f'attributes in "hash_name" and "hashed_attrs" must be disjoint.')
-        
-        if cls.hash_name is not None or cls.hashed_attrs is not None or cls.hash_group:
-            if cls._add_hash_name_to_header or cls._add_hashed_attrs_to_header or cls._add_hash_group_to_header:
-                cls._add_hash_info_to_header(add_hash_name=cls._add_hash_name_to_header if cls.hash_name is not None else False, add_hashed_attrs=cls._add_hashed_attrs_to_header if cls.hashed_attrs is not None else False)
+
+        # modify header
+        cls._add_hash_info_to_header(
+            add_hash_name=cls.hash_name is not None and cls._add_hash_name_to_header, 
+            add_hashed_attrs=cls.hashed_attrs is not None and cls._add_hashed_attrs_to_header,
+            add_hash_group=cls.hash_group and cls._add_hash_params_to_header,
+            add_hash_table_name=cls.hash_table_name and cls._add_hash_params_to_header,
+            add_hash_part_table_names='hash_part_table_names' in kwargs and kwargs['hash_part_table_names'] and cls._add_hash_params_to_header,
+        )
 
     @classmethod
     def insert_validation(cls):
@@ -415,58 +427,64 @@ class Base:
         return cls & {cls.hash_name: hash}
 
     @classmethod
-    def _add_hash_info_to_header(cls, add_hash_name=True, add_hashed_attrs=True, add_hash_group=True):
+    def _add_hash_info_to_header(cls, add_hash_name=False, add_hashed_attrs=False, add_hash_group=False, add_hash_table_name=False, add_hash_part_table_names=False):
         """
         Modifies definition header to include hash_name and hashed_attrs with a parseable syntax. 
 
         :param add_hash_name (bool): Whether to add hash_name to header
         :param add_hashed_attrs (bool): Whether to add hashed_attrs to header
         """
-        inds, contents, _ = parse_definition(cls.definition)
-        headers = contents['headers']
+        if hasattr(cls, 'definition') and isinstance(cls.definition, str):
+            inds, contents, _ = parse_definition(cls.definition)
+            headers = contents['headers']
 
-        if len(headers) >= 1:
-            header = headers[0]
+            if len(headers) >= 1:
+                header = headers[0]
 
-        else:
-            # create header
-            header = """#"""
+            else:
+                # create header
+                header = """#"""
 
-        # append hash info to header
-        if add_hash_name:
-            header += f" | hash_name = {cls.hash_name};" 
-        
-        if add_hash_group:
-            if cls.hash_group:
+            # append hash info to header
+            if add_hash_name:
+                header += f" | hash_name = {cls.hash_name};" 
+            
+            if add_hash_group:
                 header += f" | hash_group = True;" 
+            
+            if add_hash_table_name:
+                header += f" | hash_table_name = True;" 
+            
+            if add_hash_part_table_names:
+                header += f" | hash_part_table_names = True;" 
 
-        if add_hashed_attrs:
-            header += f" | hashed_attrs = "
-            for i, h in enumerate(cls.hashed_attrs):
-                header += f"{h}, " if i+1 < len(cls.hashed_attrs) else f"{h};"
-        
-        try:
-            # replace existing header with modified header
-            contents['headers'][0] = header
-       
-        except IndexError:
-            # add header
-            contents['headers'].extend([header])
+            if add_hashed_attrs:
+                header += f" | hashed_attrs = "
+                for i, h in enumerate(cls.hashed_attrs):
+                    header += f"{h}, " if i+1 < len(cls.hashed_attrs) else f"{h};"
             
-            # header should go before any dependencies or attributes
-            header_ind = np.min(np.concatenate([inds['dependencies'], inds['attributes']]))
-            inds['headers'].extend([header_ind])
-            
-            # slide index over 1 to accommodate new header
-            for n in [k for k in inds.keys() if k not in ['headers']]:
-                if len(inds[n])>0:
-                    inds[n][inds[n] >= header_ind] += 1
+            try:
+                # replace existing header with modified header
+                contents['headers'][0] = header
         
-        # reform and set definition
-        cls.definition = reform_definition(inds, contents)
+            except IndexError:
+                # add header
+                contents['headers'].extend([header])
+                
+                # header should go before any dependencies or attributes
+                header_ind = np.min(np.concatenate([inds['dependencies'], inds['attributes']]))
+                inds['headers'].extend([header_ind])
+                
+                # slide index over 1 to accommodate new header
+                for n in [k for k in inds.keys() if k not in ['headers']]:
+                    if len(inds[n])>0:
+                        inds[n][inds[n] >= header_ind] += 1
+            
+            # reform and set definition
+            cls.definition = reform_definition(inds, contents)
 
     @classmethod
-    def add_hash_to_rows(cls, rows, hash_table_name=False, overwrite_rows=False):
+    def add_hash_to_rows(cls, rows, overwrite_rows=False):
         """
         Adds hash to rows.
 
@@ -475,7 +493,9 @@ class Base:
         :overwrite_rows (bool): Whether to overwrite key/ values in rows. If False, conflicting keys will raise a ValidationError. 
 
         :returns: modified rows
-        """      
+        """
+        hash_table_name = True if cls.hash_table_name or (issubclass(cls, dj.Part) and hasattr(cls.master, 'hash_part_table_names') and getattr(cls.master, 'hash_part_table_names')) else False
+
         if hash_table_name:
             table_name = {'#__table_name__': cls.table_name}
         else:
@@ -520,8 +540,7 @@ class Base:
 
         if cls.enable_hashing and not skip_hashing:
             try:
-                hash_table_name = True if (issubclass(cls, MasterBase) and cls.hash_table_name) or (issubclass(cls, dj.Part) and cls.master.hash_part_table_names) else False
-                rows = cls.add_hash_to_rows(rows, hash_table_name=hash_table_name, overwrite_rows=overwrite_rows)
+                rows = cls.add_hash_to_rows(rows, overwrite_rows=overwrite_rows)
 
             except OverwriteError as err:
                 new = err.args[0]
@@ -532,7 +551,6 @@ class Base:
 
 
 class MasterBase(Base):
-    hash_table_name = False
     hash_part_table_names = False
 
     def __init_subclass__(cls, **kwargs):
@@ -546,7 +564,7 @@ class MasterBase(Base):
         for attr in ['hash_table_name', 'hash_part_table_names']:
             assert isinstance(getattr(cls, attr), bool), f'"{attr}" must be a boolean.'
 
-        super().init_validation()
+        super().init_validation(hash_table_name=cls.hash_table_name, hash_part_table_names=cls.hash_part_table_names)
 
     @classmethod
     def insert_validation(cls):
@@ -865,23 +883,14 @@ class PartBase(Base):
         """
         Validation for initialization of subclasses of abstract class PartBase. 
         """
-        if hasattr(cls, 'hash_table_name'):
-            raise ValidationError(f'Part tables cannot contain "hash_table_name" property. To hash the table name of part tables, set hash_part_table_names=True in master table.')
 
-        super().init_validation()
+        super().init_validation(hash_table_name=cls.hash_table_name)
 
     @classmethod
     def insert_validation(cls):
         """
         Validation for insertion into subclasses of abstract class PartBase. 
         """
-        
-        for set_default in ['hash_part_table_names']:
-            if not hasattr(cls.master, set_default):
-                setattr(cls.master, set_default, False)
-            else:
-                if not isinstance(getattr(cls.master, set_default), bool):
-                    raise NotImplementedError(f'"{set_default}" must be boolean.') 
                     
         if cls.hash_name is not None:
             if not (cls.hash_name in cls.heading.names or cls.hash_name in cls.master.heading.names):
@@ -976,11 +985,22 @@ class VirtualModule:
         if matches:
             for match in matches:
                 result = re.findall('\w+', match)
+
                 if result[0] == 'hash_name':
                     cls.hash_name = result[1]
+
                 if result[0] == 'hash_group':
                     if result[1] == 'True':
                         cls.hash_group = True
+
+                if result[0] == 'hash_table_name':
+                    if result[1] == 'True':
+                        cls.hash_table_name =True
+
+                if result[0] == 'hash_part_table_names':
+                    if result[1] == 'True':
+                        cls.hash_part_table_names = True
+
                 if result[0] == 'hashed_attrs':
                     cls.hashed_attrs = result[1:]
 

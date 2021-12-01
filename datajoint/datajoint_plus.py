@@ -25,7 +25,7 @@ import copy
 import warnings
 
 
-__version__ = "0.0.8"
+__version__ = "0.0.9"
 
 
 class classproperty:
@@ -623,7 +623,7 @@ class MasterBase(Base):
         return new
 
     @classmethod
-    def union_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, parts_kws={}):
+    def union_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, filter_out_len_zero=False, parts_kws={}):
         """
         Returns union of part table primary keys after optional restriction. Requires all part tables in union to have identical primary keys. 
 
@@ -631,14 +631,14 @@ class MasterBase(Base):
 
         :returns: numpy array object
         """  
-        return np.sum([p.proj() for p in cls.restrict_parts(include_parts=include_parts, exclude_parts=exclude_parts, part_restr=part_restr, parts_kws=parts_kws)])
+        return np.sum([p.proj() for p in cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, parts_kws=parts_kws)])
 
 #     @classmethod
 #     def keys_not_in_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, master_restr={}, parts_kws={}):
 #         return (cls & master_restr) - cls.union_parts(include_parts=include_parts, exclude_parts=exclude_parts, part_restr=part_restr, parts_kws=parts_kws)
 
     @classmethod
-    def join_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, join_method=None, join_with_master=False, parts_kws={}):
+    def join_parts(cls, part_restr={}, join_method=None, join_with_master=False, include_parts=None, exclude_parts=None, filter_out_len_zero=False, parts_kws={}):
         """
         Returns join of part tables after optional restriction. 
 
@@ -653,7 +653,7 @@ class MasterBase(Base):
 
         :returns: numpy array object
         """
-        parts = cls.restrict_parts(include_parts=include_parts, exclude_parts=exclude_parts, part_restr=part_restr, parts_kws=parts_kws)
+        parts = cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, parts_kws=parts_kws)
         
         if join_with_master:
             parts = [dj.FreeTable(cls.connection, cls.full_table_name)] + parts
@@ -733,9 +733,9 @@ class MasterBase(Base):
         return  parts if not filter_out_len_zero else [p for p in parts if len(p)>0]
     
     @classmethod
-    def restrict_one_part(cls, part_restr={}, include_parts=None, exclude_parts=None, parts_kws={}):
+    def restrict_one_part(cls, part_restr={}, include_parts=None, exclude_parts=None, filter_out_len_zero=True, parts_kws={}):
         """
-        Calls `restrict_parts` with filter_out_len_zero=True. If not exactly one part table is returned, then a ValidationError will be raised.
+        Calls `restrict_parts` with filter_out_len_zero=True by default. If not exactly one part table is returned, then a ValidationError will be raised.
 
         WARNING: If the attributes in part and part_restr are mutually exclusive, then len(part & part_restr) > 0. 
         This means that if a part table and part_restr don't share any column names, then the part table will not be filtered out from `restrict_parts` even if the part_restr has no matching entries in that part table.
@@ -744,7 +744,7 @@ class MasterBase(Base):
 
         :returns: part table after restriction.
         """
-        parts = cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=True, parts_kws=parts_kws)
+        parts = cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, parts_kws=parts_kws)
 
         if len(parts) > 1:
             raise ValidationError('part_restr can restrict multiple part tables.')
@@ -758,27 +758,27 @@ class MasterBase(Base):
     r1p = restrict_one_part # alias for restrict_one_part
 
     @classmethod
-    def part_table_names_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, parts_kws={}):
+    def part_table_names_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, filter_out_len_zero=True, parts_kws={}):
         """
-        Calls `restrict_parts_with_hash` with filter_out_len_zero=True.
+        Calls `restrict_parts_with_hash` with filter_out_len_zero=True by default.
 
         :params: see `restrict_parts_with_hash`
 
         :returns: list of part table names that contain hash.
         """
-        parts = cls.restrict_parts_with_hash(hash=hash, hash_name=hash_name, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=True, parts_kws=parts_kws)
+        parts = cls.restrict_parts_with_hash(hash=hash, hash_name=hash_name, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, parts_kws=parts_kws)
         return [format_table_name(r.table_name, part=True) for r in parts]
 
     @classmethod
-    def restrict_one_part_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, parts_kws={}):
+    def restrict_one_part_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, filter_out_len_zero=True, parts_kws={}):
         """
-        Calls `restrict_parts_with_hash` with filter_out_len_zero=True. If not exactly one part table is returned, then a ValidationError will be raised.
+        Calls `restrict_parts_with_hash` with filter_out_len_zero=True by default. If not exactly one part table is returned, then a ValidationError will be raised.
 
         :params: see `restrict_parts_with_hash`
 
         :returns: part table after restriction
         """
-        parts = cls.restrict_parts_with_hash(hash=hash, hash_name=hash_name, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=True, parts_kws=parts_kws)
+        parts = cls.restrict_parts_with_hash(hash=hash, hash_name=hash_name, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, parts_kws=parts_kws)
 
         if len(parts) > 1:
             raise ValidationError('Hash found in multiple part tables.')

@@ -25,7 +25,7 @@ import copy
 import warnings
 
 
-__version__ = "0.0.6"
+__version__ = "0.0.7"
 
 
 class classproperty:
@@ -556,7 +556,6 @@ class MasterBase(Base):
         
         super().insert_validation()
 
-        
     @classmethod
     def parts(cls, as_objects=False, as_cls=False, reload_dependencies=False):
         """
@@ -584,7 +583,6 @@ class MasterBase(Base):
         else:
             return cls_parts
 
-        
     @classmethod
     def number_of_parts(cls, parts_kws={}):
         """
@@ -592,7 +590,6 @@ class MasterBase(Base):
         """
         return len(cls.parts(**parts_kws))
 
-    
     @classmethod
     def has_parts(cls, parts_kws={}):
         """
@@ -600,7 +597,6 @@ class MasterBase(Base):
         """
         return cls.number_of_parts(parts_kws) > 0
 
-    
     @classmethod
     def _format_parts(cls, parts):
         """
@@ -624,58 +620,6 @@ class MasterBase(Base):
                 raise ValidationError(f'Arg "{part}" must be a part table or a list or tuple containing one or more part tables.')
 
         return new
-
-    @classmethod
-    def restrict_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, parts_kws={}):
-        """
-        Restricts part tables of cls. 
-
-        :param part_restr: restriction to restrict part tables with.
-        :param include_parts (part table or list of part tables): part table(s) to restrict. If None, will restrict all part tables of cls.
-        :param exclude_parts (part table or list of part tables): part table(s) to exclude from restriction
-        :parts_kws (dict): kwargs to pass to cls.parts. If no kwargs are provided, `as_cls=True` will be passed to cls.parts. 
-        """
-        assert cls.has_parts(parts_kws), 'No part tables found.'
-        parts_kws = {k:v for k,v in parts_kws.items() if k not in ['reload_dependencies']}
-
-        if include_parts is None:
-            parts = cls.parts(**parts_kws) if parts_kws!={} else cls.parts(as_cls=True)
-        
-        else:
-            parts = cls._format_parts(include_parts)
-        
-        if exclude_parts is not None:
-            parts = [p for p in parts if p.full_table_name not in [e.full_table_name for e in cls._format_parts(exclude_parts)]]
-
-        return [p & part_restr for p in parts]
-    
-    @classmethod
-    def restrict_one_part(cls, part_restr={}, include_parts=None, exclude_parts=None, parts_kws={}):
-        """
-        Checks all part tables and returns the part table that can be successfully restricted by part_restr. 
-
-        A successful restriction is defined by:
-            - len(part & part_restr) > 0 and
-            - len(part & part_restr) < len(part)
-        
-        If not exactly one part table is successfully restricted, then a ValidationError will be raised.
-
-        :params: see `restrict_parts`.
-
-        :returns: part table after restriction.
-        """
-        parts = cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, parts_kws=parts_kws)
-        parts = [p for p in parts if len(p)>0 and len(p)<len([q for q in cls.parts() if p.full_table_name == q][0])]
-
-        if len(parts) > 1:
-            raise ValidationError('part_restr can restrict multiple part tables.')
-        
-        elif len(parts) < 1:
-            raise ValidationError('part_restr can not restrict any part tables.')
-        
-        return parts[0]
-
-    r1p = restrict_one_part # alias for restrict_one_part
 
     @classmethod
     def union_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, parts_kws={}):
@@ -759,57 +703,81 @@ class MasterBase(Base):
             renamed_parts.append(p.proj(..., **renamed_attribute))
             
         return np.product(renamed_parts)
+    
+    @classmethod
+    def restrict_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, filter_out_len_zero=False, parts_kws={}):
+        """
+        Restricts part tables of cls. 
+
+        :param part_restr: restriction to restrict part tables with.
+        :param include_parts (part table or list of part tables): part table(s) to restrict. If None, will restrict all part tables of cls.
+        :param exclude_parts (part table or list of part tables): part table(s) to exclude from restriction
+        :param parts_kws (dict): kwargs to pass to cls.parts. If no kwargs are provided, `as_cls=True` will be passed to cls.parts.
+        :param filter_out_len_zero (bool): If True, parts with len = 0 after restriction are excluded from list.
+        """
+        assert cls.has_parts(parts_kws), 'No part tables found.'
+        parts_kws = {k:v for k,v in parts_kws.items() if k not in ['reload_dependencies']}
+
+        if include_parts is None:
+            parts = cls.parts(**parts_kws) if parts_kws!={} else cls.parts(as_cls=True)
+        
+        else:
+            parts = cls._format_parts(include_parts)
+        
+        if exclude_parts is not None:
+            parts = [p for p in parts if p.full_table_name not in [e.full_table_name for e in cls._format_parts(exclude_parts)]]
+        
+        parts = [p & part_restr for p in parts]
+
+        return  parts if not filter_out_len_zero else [p for p in parts if len(p)>0]
+    
+    @classmethod
+    def restrict_one_part(cls, part_restr={}, include_parts=None, exclude_parts=None, parts_kws={}):
+        """
+        Calls `restrict_parts` with filter_out_len_zero=True. If not exactly one part table is returned, then a ValidationError will be raised.
+
+        WARNING: If the attributes in part and part_restr are mutually exclusive, then len(part & part_restr) > 0. 
+        This means that if a part table and part_restr don't share any column names, then the part table will not be filtered out from `restrict_parts` even if the part_restr has no matching entries in that part table.
+
+        :params: see `restrict_parts`.
+
+        :returns: part table after restriction.
+        """
+        parts = cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=True, parts_kws=parts_kws)
+
+        if len(parts) > 1:
+            raise ValidationError('part_restr can restrict multiple part tables.')
+        
+        elif len(parts) < 1:
+            raise ValidationError('part_restr can not restrict any part tables.')
+        
+        else:
+            return parts[0]
+
+    r1p = restrict_one_part # alias for restrict_one_part
 
     @classmethod
-    def parts_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, parts_kws={}):
+    def part_table_names_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, parts_kws={}):
         """
-        Checks all part tables and returns the names of the part tables that can be successfully restricted by {'hash_name': hash}. 
+        Calls `restrict_parts_with_hash` with filter_out_len_zero=True.
 
-        Note: If hash_name is not provided, cls.hash_name will be used. 
+        :params: see `restrict_parts_with_hash`
 
-        A successful restriction is defined by:
-            - 'hash_name' is in the part table heading
-            - len(part & {'hash_name': hash}) > 0
-
-        :params hash, hash_name, include_parts, exclude_parts, parts_kws: see `restrict_parts_with_hash`
-
-        :returns: list
+        :returns: list of part table names that contain hash.
         """
-        if hash_name is None and hasattr(cls, 'hash_name'):
-            hash_name = cls.hash_name
-
-        if hash_name is None:
-            raise ValidationError('Table does not have "hash_name" defined, provide it to restrict with hash.')
-
-        parts = cls.restrict_parts_with_hash(hash, hash_name, include_parts, exclude_parts, parts_kws)
-        parts = [p for p in parts if hash_name in p.heading.names and len(p)>0]
+        parts = cls.restrict_parts_with_hash(hash=hash, hash_name=hash_name, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=True, parts_kws=parts_kws)
         return [format_table_name(r.table_name, part=True) for r in parts]
 
     @classmethod
     def restrict_one_part_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, parts_kws={}):
         """
-        Checks all part tables and returns the part table that is successfully restricted by {'hash_name': hash}. 
+        Calls `restrict_parts_with_hash` with filter_out_len_zero=True. If not exactly one part table is returned, then a ValidationError will be raised.
 
-        Note: If hash_name is not provided, cls.hash_name will be used. 
-
-        A successful restriction is defined by:
-            - 'hash_name' is in the part table heading
-            - len(part & {'hash_name': hash}) > 0
-        
-        If not exactly one part table is successfully restricted, then a ValidationError will be raised.
-
-        :params hash, hash_name, include_parts, exclude_parts, parts_kws: see `restrict_parts_with_hash`
+        :params: see `restrict_parts_with_hash`
 
         :returns: part table after restriction
         """
-        if hash_name is None and hasattr(cls, 'hash_name'):
-            hash_name = cls.hash_name
-
-        if hash_name is None:
-            raise ValidationError('Table does not have "hash_name" defined, provide it to restrict with hash.')
-
-        parts = cls.restrict_parts_with_hash(hash, hash_name, include_parts, exclude_parts, parts_kws)
-        parts = [p for p in parts if hash_name in p.heading.names and len(p)>0]
+        parts = cls.restrict_parts_with_hash(hash=hash, hash_name=hash_name, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=True, parts_kws=parts_kws)
 
         if len(parts) > 1:
             raise ValidationError('Hash found in multiple part tables.')
@@ -817,20 +785,27 @@ class MasterBase(Base):
         elif len(parts) < 1:
             raise ValidationError('Hash not found in any part tables.')
         
-        return parts[0]
+        else:
+            return parts[0]
     
     r1pwh = restrict_one_part_with_hash # alias for restrict_one_part_with_hash
 
     @classmethod
-    def restrict_parts_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, parts_kws={}):
+    def restrict_parts_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, filter_out_len_zero=False, parts_kws={}):
         """
-        Returns part tables restricted by {'hash_name': hash}. 
+        Checks all part tables and returns the part table that is successfully restricted by {'hash_name': hash}. 
+
+        Note: If hash_name is not provided, cls.hash_name will be tried. 
+
+        A successful restriction is defined by:
+            - 'hash_name' is in the part table heading
+            - len(part & {'hash_name': hash}) > 0 if filter_out_len_zero=True
 
         :param hash: hash to restrict with
         :param hash_name: name of attribute that contains hash. If hash_name is None, cls.hash_name will be used.
         :params include_parts, exclude_parts, parts_kws: see `restrict_parts`
 
-        :returns: list
+        :returns: list of part tables after restriction
         """  
         if hash_name is None and hasattr(cls, 'hash_name'):
             hash_name = cls.hash_name
@@ -838,9 +813,10 @@ class MasterBase(Base):
         if hash_name is None:
             raise ValidationError('Table does not have "hash_name" defined, provide it to restrict with hash.')
         
-        return cls.restrict_parts(part_restr={hash_name: hash}, include_parts=include_parts, exclude_parts=exclude_parts, parts_kws=parts_kws) 
-        
+        parts = cls.restrict_parts(part_restr={hash_name: hash}, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, parts_kws=parts_kws)
 
+        return [p for p in parts if hash_name in p.heading.names]
+        
     @classmethod
     def insert(cls, rows, replace=False, skip_duplicates=False, ignore_extra_fields=False, allow_direct_insert=None, reload_dependencies=False, insert_to_parts=None, insert_to_parts_kws={}, skip_hashing=False, constant_attrs={}, overwrite_rows=False):
         """

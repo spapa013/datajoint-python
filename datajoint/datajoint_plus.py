@@ -249,7 +249,6 @@ class Base:
         Validation for initialization of subclasses of abstract class Base. 
         """
         for attr in ['enable_hashing', 'hash_group', 'add_hash_name_to_header', 'add_hashed_attrs_to_header']:
-            print(getattr(cls, attr))
             assert isinstance(getattr(cls, attr), bool), f'"{attr}" must be boolean.'           
 
         for attr in ['hash_name', 'hashed_attrs']:

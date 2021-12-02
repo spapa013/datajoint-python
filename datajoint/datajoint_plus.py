@@ -25,7 +25,7 @@ import copy
 import warnings
 
 
-__version__ = "0.0.13"
+__version__ = "0.0.14"
 
 
 class classproperty:
@@ -105,6 +105,18 @@ def split_full_table_name(full_table_name:str):
     :returns (tuple): (database, table_name)
     """
     return tuple(s.strip('`') for s in full_table_name.split('.'))
+
+
+def reform_full_table_name(schema_name:str, table_name:str):
+    """
+    Reforms full_table_name from DataJoint schema name and a table_name.
+
+    :param schema_name (str): name of schema
+    :param table_name (str): name of table
+    
+    :returns: full_table_name
+    """
+    return '.'.join(['`'+schema_name+'`', '`'+table_name+'`'])
 
 
 def format_table_name(table_name, snake_case=False, part=False):
@@ -296,6 +308,12 @@ class Base:
             add_hash_part_table_names='hash_part_table_names' in kwargs and kwargs['hash_part_table_names'] and cls._add_hash_params_to_header,
         )
 
+    @classproperty
+    def hash_len(cls):
+        if cls.hash_name is not None and cls._hash_len is None:
+            cls._hash_name_validation()
+        return cls._hash_len
+
     @classmethod
     def insert_validation(cls):
         """
@@ -387,22 +405,32 @@ class Base:
         """
         return cls.proj(..., **{a: '""' for a in cls.heading.names if a in args}).proj(*[a for a in cls.heading.names if a not in args])
           
-    @staticmethod
-    def _hash_name_type_validation(hash_name, hash_name_type):
+    @classmethod
+    def _parse_hash_name_attribute(cls, source='self'):
         """
-        Validates hash_name type and returns hash_len
-        """
-        hash_name_type_error_msg = f'hash_name "{hash_name}" must be a "varchar" type > 0 and <= 32 characters'
-        
-        hash_name_type_parsed = re.findall('\w+', hash_name_type)
-        if 'varchar' not in hash_name_type_parsed:
-            raise ValidationError(hash_name_type_error_msg)
+        Computes length of hash_name attribute in DataJoint table heading.
 
-        # hash_name varchar length validation
-        hash_len = int(hash_name_type_parsed[1])
-        assert (hash_len > 0 and hash_len <= 32), hash_name_type_error_msg
+        :param source (str): the source of DataJoint heading to check
+            - self: checks own heading
+            - master: checks master table heading (only for part tables)
+
+        :returns: 
+            - hash type (str)
+            - hash len (int)
+        """
+
+        if source == 'self':
+            attributes = cls.heading.attributes
+
+        elif source == 'master':
+            attributes = cls.master.heading.attributes
         
-        return hash_len
+        else:
+            raise ValueError(f'heading source: {source} not recognized.')
+
+        hash_type, hash_len = re.findall('\w+', attributes[cls.hash_name].type)
+
+        return hash_type, int(hash_len)
 
     @classmethod
     def restrict_with_hash(cls, hash, hash_name=None):
@@ -521,10 +549,10 @@ class Base:
             rows_to_hash = rows[[*cls.hashed_attrs]]
 
             if cls.hash_group:
-                rows[cls.hash_name] = generate_hash(rows_to_hash, add_constant_columns=table_name)[:cls._hash_len]
+                rows[cls.hash_name] = generate_hash(rows_to_hash, add_constant_columns=table_name)[:cls.hash_len]
 
             else:
-                rows[cls.hash_name] = [generate_hash([row], add_constant_columns=table_name)[:cls._hash_len] for row in rows_to_hash.to_dict(orient='records')]
+                rows[cls.hash_name] = [generate_hash([row], add_constant_columns=table_name)[:cls.hash_len] for row in rows_to_hash.to_dict(orient='records')]
                 
         return rows
 
@@ -554,6 +582,7 @@ class Base:
 
 class MasterBase(Base):
     hash_part_table_names = False
+    _is_hash_name_validated = False
 
     def __init_subclass__(cls, **kwargs):
         cls.init_validation()
@@ -577,10 +606,25 @@ class MasterBase(Base):
             if cls.hash_name not in cls.heading.names:
                 raise ValidationError(f'Attribute "{cls.hash_name}" in property "hash_name" must be present in table heading.')
 
-            # hash_name type validation
-            cls._hash_len = cls._hash_name_type_validation(cls.hash_name, cls.heading.attributes[cls.hash_name].type)
+            # hash_name validation
+            if not cls._is_hash_name_validated:
+                cls._hash_name_validation()
         
         super().insert_validation()
+    
+    @classmethod
+    def _hash_name_validation(cls):
+        """
+        Validates hash_name and sets hash_len
+        """
+        hash_type, hash_len = cls._parse_hash_name_attribute()
+
+        if hash_type != 'varchar' or not (hash_len > 0 and hash_len <= 32):
+            raise ValidationError(f'hash_name "{cls.hash_name}" must be a "varchar" type > 0 and <= 32 characters')
+        
+        cls._hash_len = hash_len
+
+        cls._is_hash_name_validated = True
 
     @classmethod
     def parts(cls, as_objects=False, as_cls=False, reload_dependencies=False):
@@ -877,6 +921,8 @@ class MasterBase(Base):
 
         
 class PartBase(Base):
+    _is_hash_name_validated = False
+
     def __init_subclass__(cls, **kwargs):
         cls.init_validation()
 
@@ -887,6 +933,38 @@ class PartBase(Base):
         """
 
         super().init_validation(hash_table_name=cls.hash_table_name)
+    
+    @classmethod
+    def _hash_name_validation(cls, source='self'):
+        """
+        Validates hash_name and sets hash_len
+        """
+
+        part_hash_len = None
+        if cls.hash_name in cls.heading.names:
+            part_hash_type, part_hash_len = cls._parse_hash_name_attribute()
+            
+            if part_hash_type != 'varchar' or not (part_hash_len > 0 and part_hash_len <= 32):
+                raise ValidationError(f'hash_name "{cls.hash_name}" must be a "varchar" type > 0 and <= 32 characters')
+
+        master_hash_len = None
+        if cls.hash_name in cls.master.heading.names:
+            master_hash_type, master_hash_len = cls._parse_hash_name_attribute(source='master')
+            
+            if master_hash_type != 'varchar' or not (master_hash_len > 0 and master_hash_len <= 32):
+                raise ValidationError(f'hash_name "{cls.hash_name}" must be a "varchar" type > 0 and <= 32 characters')
+
+        if part_hash_len and master_hash_len:
+            assert part_hash_len == master_hash_len, f'hash_name "{cls.hash_name}" varchar length mismatch. Part table length is {part_hash_len} but master length is {master_hash_len}'        
+            cls._hash_len = part_hash_len
+        
+        elif part_hash_len:
+            cls._hash_len = part_hash_len
+        
+        else: 
+            cls._hash_len = master_hash_len
+
+        cls._is_hash_name_validated = True
 
     @classmethod
     def insert_validation(cls):
@@ -896,25 +974,11 @@ class PartBase(Base):
                     
         if cls.hash_name is not None:
             if not (cls.hash_name in cls.heading.names or cls.hash_name in cls.master.heading.names):
-                raise ValidationError(f'Attribute "{cls.hash_name}" in "hash_name" must be present in the part table or master table heading.')
-
-            part_hash_len = None
-            if cls.hash_name in cls.heading.names:
-                part_hash_len = cls._hash_name_type_validation(cls.hash_name, cls.heading.attributes[cls.hash_name].type)
-
-            master_hash_len = None
-            if cls.hash_name in cls.master.heading.names:
-                master_hash_len = cls._hash_name_type_validation(cls.hash_name, cls.master.heading.attributes[cls.hash_name].type)
-
-            if (part_hash_len is not None) and (master_hash_len is not None):
-                assert part_hash_len == master_hash_len, f'hash_name "{cls.hash_name}" varchar length mismatch. Part table length is {part_hash_len} but master length is {master_hash_len}'
-                cls._hash_len = part_hash_len
-
-            elif part_hash_len is not None:
-                cls._hash_len = part_hash_len
-
-            else:
-                cls._hash_len = master_hash_len
+                raise ValidationError(f'hash_name: "{cls.hash_name}" must be present in the part table or master table heading.')
+            
+            # hash_name validation
+            if not cls._is_hash_name_validated:
+                cls._hash_name_validation()
 
         super().insert_validation()
 
@@ -990,7 +1054,6 @@ class VirtualModule:
 
                 if result[0] == 'hash_name':
                     cls.hash_name = result[1]
-                    cls._hash_len = cls._hash_name_type_validation(cls.hash_name, cls.heading.attributes[cls.hash_name].type)
 
                 if result[0] == 'hash_group':
                     if result[1] == 'True':
@@ -998,7 +1061,7 @@ class VirtualModule:
 
                 if result[0] == 'hash_table_name':
                     if result[1] == 'True':
-                        cls.hash_table_name =True
+                        cls.hash_table_name = True
 
                 if result[0] == 'hash_part_table_names':
                     if result[1] == 'True':

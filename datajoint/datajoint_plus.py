@@ -25,7 +25,7 @@ import copy
 import warnings
 
 
-__version__ = "0.0.14"
+__version__ = "0.0.15"
 
 
 class classproperty:
@@ -431,6 +431,29 @@ class Base:
         hash_type, hash_len = re.findall('\w+', attributes[cls.hash_name].type)
 
         return hash_type, int(hash_len)
+    
+    def hash1(cls, rows, **kwargs):
+        """
+        Hashes rows and requires a single hash as output.
+        
+        See `hash` for kwargs.
+        
+        :returns (str): hash
+        """
+        hashes = cls.hash(rows, **kwargs)
+        assert len(hashes) == 1, 'Multiple hashes found. hash1 must return only 1 hash.'
+        return hashes[0]
+
+    def hash(cls, rows, unique=False):
+        """
+        Hashes rows.
+        
+        :param rows: rows containing attributes to be hashed. 
+        :unique: If True, only unique hashes will be returned. If False, all hashes returned. 
+        
+        returns (list): list with hash(es)
+        """
+        return cls.add_hash_to_rows(rows)[cls.hash_name].unique().tolist() if unique else cls.add_hash_to_rows(rows)[cls.hash_name].tolist()
 
     @classmethod
     def restrict_with_hash(cls, hash, hash_name=None):

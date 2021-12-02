@@ -432,6 +432,7 @@ class Base:
 
         return hash_type, int(hash_len)
     
+    @classmethod
     def hash1(cls, rows, **kwargs):
         """
         Hashes rows and requires a single hash as output.
@@ -444,6 +445,7 @@ class Base:
         assert len(hashes) == 1, 'Multiple hashes found. hash1 must return only 1 hash.'
         return hashes[0]
 
+    @classmethod
     def hash(cls, rows, unique=False):
         """
         Hashes rows.

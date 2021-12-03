@@ -25,7 +25,7 @@ import copy
 import warnings
 
 
-__version__ = "0.0.15"
+__version__ = "0.0.16"
 
 
 class classproperty:
@@ -911,7 +911,17 @@ class MasterBase(Base):
         parts = cls.restrict_parts(part_restr={hash_name: hash}, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, parts_kws=parts_kws)
 
         return [p for p in parts if hash_name in p.heading.names]
-        
+    
+    @classmethod
+    def hashes_not_in_parts(cls, hash_name=None):
+        if hash_name is None and hasattr(cls, 'hash_name'):
+            hash_name = cls.hash_name
+
+        if hash_name is None:
+            raise ValidationError('Table does not have "hash_name" defined, provide it to restrict with hash.')
+
+        return cls - np.sum([(dj.U(cls.hash_name) & p) for p in cls.parts(as_objects=True)])
+
     @classmethod
     def insert(cls, rows, replace=False, skip_duplicates=False, ignore_extra_fields=False, allow_direct_insert=None, reload_dependencies=False, insert_to_parts=None, insert_to_parts_kws={}, skip_hashing=False, constant_attrs={}, overwrite_rows=False):
         """

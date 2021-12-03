@@ -913,14 +913,22 @@ class MasterBase(Base):
         return [p for p in parts if hash_name in p.heading.names]
     
     @classmethod
-    def hashes_not_in_parts(cls, hash_name=None):
+    def hashes_not_in_parts(cls, hash_name=None, part_restr={}, include_parts=None, exclude_parts=None, filter_out_len_zero=False, parts_kws={}):
+        """
+        Restricts master table to any hashes not found in any of its part tables.
+
+        :param hash_name: name of attribute that contains hash. If hash_name is None, cls.hash_name will be used.
+        :params part_restr, include_parts, exclude_parts, parts_kws: see `restrict_parts`
+
+        :returns: cls after restriction
+        """
         if hash_name is None and hasattr(cls, 'hash_name'):
             hash_name = cls.hash_name
 
         if hash_name is None:
             raise ValidationError('Table does not have "hash_name" defined, provide it to restrict with hash.')
 
-        return cls - np.sum([(dj.U(cls.hash_name) & p) for p in cls.parts(as_objects=True)])
+        return cls - np.sum([(dj.U(cls.hash_name) & p) for p in cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, parts_kws=parts_kws)])
 
     @classmethod
     def insert(cls, rows, replace=False, skip_duplicates=False, ignore_extra_fields=False, allow_direct_insert=None, reload_dependencies=False, insert_to_parts=None, insert_to_parts_kws={}, skip_hashing=False, constant_attrs={}, overwrite_rows=False):

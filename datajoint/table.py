@@ -15,6 +15,7 @@ from .utils import user_choice, OrderedDict
 from .heading import Heading
 from .errors import DuplicateError, AccessError, DataJointError, UnknownAttributeError
 from .version import __version__ as version
+from datajoint_plus import classproperty
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class Table(QueryExpression):
     declaration_context = None
 
     # -------------- required by QueryExpression ----------------- #
-    @property
+    @classproperty
     def heading(self):
         """
         :return: table heading. If the table is not declared, attempts to declare it first.

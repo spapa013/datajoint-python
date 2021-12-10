@@ -15,7 +15,14 @@ from .utils import user_choice, OrderedDict
 from .heading import Heading
 from .errors import DuplicateError, AccessError, DataJointError, UnknownAttributeError
 from .version import __version__ as version
-from .datajoint_plus import classproperty
+
+class classproperty:
+    def __init__(self, f):
+        self.f = f
+
+    def __get__(self, obj, owner):
+        return self.f(owner)
+
 
 logger = logging.getLogger(__name__)
 

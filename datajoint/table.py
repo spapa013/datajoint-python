@@ -15,7 +15,7 @@ from .utils import user_choice, OrderedDict
 from .heading import Heading
 from .errors import DuplicateError, AccessError, DataJointError, UnknownAttributeError
 from .version import __version__ as version
-from datajoint_plus import classproperty
+from .datajoint_plus import classproperty
 
 logger = logging.getLogger(__name__)
 

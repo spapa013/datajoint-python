@@ -98,6 +98,9 @@ class UserTable(Table, metaclass=OrderedClass):
                 raise DataJointError('Class %s is not properly declared (schema decorator not applied?)' % cls.__name__)
             return r"`{0:s}`.`{1:s}`".format(cls.database, cls.table_name)
 
+    @ClassProperty
+    def heading(self):
+        return super().heading()
 
 class Manual(UserTable):
     """

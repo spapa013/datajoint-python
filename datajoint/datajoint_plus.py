@@ -22,7 +22,7 @@ from IPython.display import display, clear_output
 from ipywidgets.widgets import Output, HBox, Label
 import traceback
 import copy
-import warnings
+import logging
 
 
 __version__ = "0.0.17"
@@ -698,7 +698,7 @@ class MasterBase(Base):
         cls_parts = [getattr(cls, d) for d in dir(cls) if inspect.isclass(getattr(cls, d)) and issubclass(getattr(cls, d), dj.Part)]
         for cls_part in [p.full_table_name for p in cls_parts]:
             if cls_part not in super().parts(cls):
-                warnings.warn('Part table defined in class definition not found in DataJoint graph. Reload dependencies.')
+                logging.warning('Part table defined in class definition not found in DataJoint graph. Reload dependencies.')
 
         if not as_cls:
             return super().parts(cls, as_objects=as_objects)
@@ -1189,7 +1189,7 @@ def add_datajoint_plus(module):
                 obj.__bases__ = tuple(bases)
                 add_datajoint_plus(obj)
         except:
-            warnings.warn(f'Could not add DataJointPlus to: {name}.')
+            logging.warning(f'Could not add DataJointPlus to: {name}.')
             traceback.print_exc()
 
 

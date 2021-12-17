@@ -1121,6 +1121,50 @@ def enable_datajoint_flags(enable_python_native_blobs=True):
     dj.errors._switch_adapted_types(True)
 
 
+def register_externals(external_stores):
+    """
+    Registers the external stores for a schema_name in this module.
+    """
+    if 'stores' not in dj.config:
+        dj.config['stores'] = external_stores
+    else:
+        dj.config['stores'].update(external_stores)
+
+
+def make_store_dict(path):
+    return {
+        'protocol': 'file',
+        'location': str(path),
+        'stage': str(path)
+    }
+
+
+def _get_calling_context() -> locals:
+    # get the calling namespace
+    try:
+        frame = inspect.currentframe().f_back
+        context = frame.f_locals
+    finally:
+        del frame
+    return context
+
+
+def register_adapters(adapter_objects, context=None):
+    """
+    Imports the adapters for a schema_name into the global namespace.
+    """   
+    if context is None:
+        # if context is missing, use the calling namespace
+        try:
+            frame = inspect.currentframe().f_back
+            context = frame.f_locals
+        finally:
+            del frame
+    
+    for name, adapter in adapter_objects.items():
+        context[name] = adapter
+
+
 djp_mapping = {
     'Lookup': Lookup,
     'Manual': Manual,

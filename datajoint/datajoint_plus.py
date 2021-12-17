@@ -25,7 +25,7 @@ import copy
 import warnings
 
 
-__version__ = "0.0.16"
+__version__ = "0.0.17"
 
 
 class classproperty:
@@ -43,7 +43,6 @@ class ValidationError(dj.DataJointError):
 class OverwriteError(dj.DataJointError):
     pass
 
-_vm_modification_err = 'Table modification not allowed with virtual modules. '
 
 def generate_hash(rows, add_constant_columns:dict=None):
     """
@@ -246,7 +245,8 @@ class JoinMethod(Enum):
 
 
 class Base:
-    is_insert_validated = False
+    _is_insert_validated = False
+    _enable_table_modification = True
 
     # required for hashing
     enable_hashing = False
@@ -319,14 +319,12 @@ class Base:
         """
         Validation for insertion to DataJoint tables that are subclasses of abstract class Base. 
         """
-        assert cls.__module__ != 'datajoint.user_tables', _vm_modification_err
-
         # ensure hash_name and hashed_attrs are disjoint
         if cls.hash_name is not None and cls.hashed_attrs is not None:
             if not set((cls.hash_name,)).isdisjoint(cls.hashed_attrs):
                 raise NotImplementedError(f'attributes in "hash_name" and "hashed_attrs" must be disjoint.')
 
-        cls.is_insert_validated = True
+        cls._is_insert_validated = True
 
     @classmethod
     def load_dependencies(cls, force=False):
@@ -537,6 +535,35 @@ class Base:
             cls.definition = reform_definition(inds, contents)
 
     @classmethod
+    def parse_hash_info_from_header(cls):
+        """
+        Parses hash_name and hashed_attrs from DataJoint table header and sets properties in class. 
+        """
+        header = cls.heading.table_info['comment']
+        matches = re.findall(r'\|(.*?);', header)
+        if matches:
+            for match in matches:
+                result = re.findall('\w+', match)
+
+                if result[0] == 'hash_name':
+                    cls.hash_name = result[1]
+
+                if result[0] == 'hash_group':
+                    if result[1] == 'True':
+                        cls.hash_group = True
+
+                if result[0] == 'hash_table_name':
+                    if result[1] == 'True':
+                        cls.hash_table_name = True
+
+                if result[0] == 'hash_part_table_names':
+                    if result[1] == 'True':
+                        cls.hash_part_table_names = True
+
+                if result[0] == 'hashed_attrs':
+                    cls.hashed_attrs = result[1:]
+
+    @classmethod
     def add_hash_to_rows(cls, rows, overwrite_rows=False):
         """
         Adds hash to rows.
@@ -587,7 +614,7 @@ class Base:
         Prepares rows for insert by checking if table has been validated for insert, adds constant_attrs and performs hashing. 
         """
         
-        if not cls.is_insert_validated:
+        if not cls._is_insert_validated:
             cls.insert_validation()
         
         if constant_attrs != {}:
@@ -943,7 +970,7 @@ class MasterBase(Base):
         :param constant_attrs (dict): Python dictionary to add to every row of rows
         :overwrite_rows (bool): Whether to overwrite key/ values in rows. If False, conflicting keys will raise a ValidationError.
         """
-        if not cls.is_insert_validated:
+        if not cls._is_insert_validated:
             cls.insert_validation()
         
         if insert_to_parts is not None:
@@ -1081,78 +1108,56 @@ class Imported(MasterBase, dj.Imported):
 class Part(PartBase, dj.Part):
     pass
 
-# VIRTUAL MODULES
+# Utilities
 
-class VirtualModule:   
-    @classmethod
-    def parse_hash_info_from_header(cls):
-        """
-        Parses hash_name and hashed_attrs from DataJoint table header and sets properties in class. 
-        """
-        header = cls.heading.table_info['comment']
-        matches = re.findall(r'\|(.*?);', header)
-        if matches:
-            for match in matches:
-                result = re.findall('\w+', match)
-
-                if result[0] == 'hash_name':
-                    cls.hash_name = result[1]
-
-                if result[0] == 'hash_group':
-                    if result[1] == 'True':
-                        cls.hash_group = True
-
-                if result[0] == 'hash_table_name':
-                    if result[1] == 'True':
-                        cls.hash_table_name = True
-
-                if result[0] == 'hash_part_table_names':
-                    if result[1] == 'True':
-                        cls.hash_part_table_names = True
-
-                if result[0] == 'hashed_attrs':
-                    cls.hashed_attrs = result[1:]
-
-    @classmethod
-    def insert(cls, *args, **kwargs):
-        raise AttributeError(_vm_modification_err)
+def enable_datajoint_flags(enable_python_native_blobs=True):
+    """
+    Enable experimental datajoint features
     
-    @classmethod
-    def _update(cls, *args, **kwargs):
-        raise AttributeError(_vm_modification_err)
-    
-    @classmethod
-    def delete(cls, *args, **kwargs):
-        raise AttributeError(_vm_modification_err)
-    
-    @classmethod
-    def delete_quick(cls, *args, **kwargs):
-        raise AttributeError(_vm_modification_err)
-    
-    @classmethod
-    def drop(cls, *args, **kwargs):
-        raise AttributeError(_vm_modification_err)
-    
-    @classmethod
-    def drop_quick(cls, *args, **kwargs):
-        raise AttributeError(_vm_modification_err)
-    
-
-class VirtualLookup(VirtualModule, Lookup):
-    pass
+    These flags are required by 0.12.0+ (for now).
+    """
+    dj.config['enable_python_native_blobs'] = enable_python_native_blobs
+    dj.errors._switch_filepath_types(True)
+    dj.errors._switch_adapted_types(True)
 
 
-class VirtualManual(VirtualModule, Manual):
-    pass
+djp_mapping = {
+    'Lookup': Lookup,
+    'Manual': Manual,
+    'Computed': Computed,
+    'Imported': Imported,
+    'Part': Part
+}
+
+def add_datajoint_plus(module):
+    """
+    Adds DataJointPlus recursively to DataJoint tables inside the module.
+    """
+    for name in dir(module):
+        try:
+            if inspect.isclass(getattr(module, name)) and issubclass(getattr(module, name), dj.Table) and not issubclass(getattr(module, name), djp.Base):
+                obj = getattr(module, name)
+                bases = []
+                for b in obj.__bases__:
+                    if issubclass(b, dj.Table):
+                        b = djp_mapping[b.__name__]
+                    bases.append(b)
+                obj.__bases__ = tuple(bases)
+                add_datajoint_plus(obj)
+        except:
+            warnings.warn(f'Could not add DataJointPlus to: {obj.__name__}.')
+            traceback.print_exc()
 
 
-class VirtualComputed(VirtualModule, Computed):
-    pass
-
-
-class VirtualImported(VirtualModule, Imported):
-    pass
-
-
-class VirtualPart(VirtualModule, Part):
-    pass
+def reassign_master_attribute(module):
+    """
+    Overwrite .master attribute in DataJoint part tables to map to master class from current module. This is required if the DataJoint table is inherited.
+    """
+    for name in dir(module):
+        # Get DataJoint tables
+        if inspect.isclass(getattr(module, name)) and issubclass(getattr(module, name), dj.Table):
+            obj = getattr(module, name)
+            for nested in dir(obj):
+                # Get Part tables
+                if inspect.isclass(getattr(obj, nested)) and issubclass(getattr(obj, nested), dj.Part):
+                    setattr(getattr(obj, nested), '_master', obj)

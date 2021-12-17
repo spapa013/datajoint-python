@@ -57,4 +57,4 @@ datajoint_plus_github = requests.get(f"https://raw.githubusercontent.com/spapa01
 text = re.search('__version__.*', datajoint_plus_github.text).group()
 datajoint_plus_github_version = text.split('=')[1].strip(' "'" '") if len(text.split('='))>1 else text.strip(' "'" '")
 if datajoint_plus_version != datajoint_plus_github_version:
-    warnings.warn(f'Imported datajoint.datajoint_plus version, {datajoint_plus_version} does not match the source version on Github, {datajoint_plus_github_version}.')
+    warnings.warn(f'Imported datajoint.datajoint_plus version, {datajoint_plus_version} does not match the latest version on Github, {datajoint_plus_github_version}.')

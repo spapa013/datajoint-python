@@ -37,6 +37,7 @@ class Table(QueryExpression):
     declaration_context = None
 
     # -------------- required by QueryExpression ----------------- #
+    @property
     def heading(self):
         """
         :return: table heading. If the table is not declared, attempts to declare it first.

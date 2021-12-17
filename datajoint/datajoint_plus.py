@@ -1135,7 +1135,7 @@ def add_datajoint_plus(module):
     """
     for name in dir(module):
         try:
-            if inspect.isclass(getattr(module, name)) and issubclass(getattr(module, name), dj.Table) and not issubclass(getattr(module, name), djp.Base):
+            if inspect.isclass(getattr(module, name)) and issubclass(getattr(module, name), dj.Table) and not issubclass(getattr(module, name), Base):
                 obj = getattr(module, name)
                 bases = []
                 for b in obj.__bases__:
@@ -1145,7 +1145,7 @@ def add_datajoint_plus(module):
                 obj.__bases__ = tuple(bases)
                 add_datajoint_plus(obj)
         except:
-            warnings.warn(f'Could not add DataJointPlus to: {obj.__name__}.')
+            warnings.warn(f'Could not add DataJointPlus to: {name}.')
             traceback.print_exc()
 
 

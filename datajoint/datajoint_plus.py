@@ -1278,6 +1278,5 @@ class DataJointPlusModule(dj.VirtualModule):
             register_externals(add_externals)
             
         add_datajoint_plus(self)
-        for 
     
 create_djp_module = DataJointPlusModule

@@ -1190,7 +1190,7 @@ def add_datajoint_plus(module):
                         b = djp_mapping[b.__name__]
                     bases.append(b)
                 obj.__bases__ = tuple(bases)
-                obj.parse_hash_name_from_header()
+                obj.parse_hash_info_from_header()
                 add_datajoint_plus(obj)
     except:
         logging.warning(f'Could not add DataJointPlus to: {name}.')

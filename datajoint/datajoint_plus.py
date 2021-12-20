@@ -22,10 +22,11 @@ from IPython.display import display, clear_output
 from ipywidgets.widgets import Output, HBox, Label
 import traceback
 import copy
-import warnings
+import logging
+from .table import FreeTable
+from .user_tables import UserTable
 
-
-__version__ = "0.0.16"
+__version__ = "0.0.17"
 
 
 class classproperty:
@@ -43,7 +44,6 @@ class ValidationError(dj.DataJointError):
 class OverwriteError(dj.DataJointError):
     pass
 
-_vm_modification_err = 'Table modification not allowed with virtual modules. '
 
 def generate_hash(rows, add_constant_columns:dict=None):
     """
@@ -246,7 +246,8 @@ class JoinMethod(Enum):
 
 
 class Base:
-    is_insert_validated = False
+    _is_insert_validated = False
+    _enable_table_modification = True
 
     # required for hashing
     enable_hashing = False
@@ -319,14 +320,12 @@ class Base:
         """
         Validation for insertion to DataJoint tables that are subclasses of abstract class Base. 
         """
-        assert cls.__module__ != 'datajoint.user_tables', _vm_modification_err
-
         # ensure hash_name and hashed_attrs are disjoint
         if cls.hash_name is not None and cls.hashed_attrs is not None:
             if not set((cls.hash_name,)).isdisjoint(cls.hashed_attrs):
                 raise NotImplementedError(f'attributes in "hash_name" and "hashed_attrs" must be disjoint.')
 
-        cls.is_insert_validated = True
+        cls._is_insert_validated = True
 
     @classmethod
     def load_dependencies(cls, force=False):
@@ -537,6 +536,35 @@ class Base:
             cls.definition = reform_definition(inds, contents)
 
     @classmethod
+    def parse_hash_info_from_header(cls):
+        """
+        Parses hash_name and hashed_attrs from DataJoint table header and sets properties in class. 
+        """
+        header = cls.heading.table_info['comment']
+        matches = re.findall(r'\|(.*?);', header)
+        if matches:
+            for match in matches:
+                result = re.findall('\w+', match)
+
+                if result[0] == 'hash_name':
+                    cls.hash_name = result[1]
+
+                if result[0] == 'hash_group':
+                    if result[1] == 'True':
+                        cls.hash_group = True
+
+                if result[0] == 'hash_table_name':
+                    if result[1] == 'True':
+                        cls.hash_table_name = True
+
+                if result[0] == 'hash_part_table_names':
+                    if result[1] == 'True':
+                        cls.hash_part_table_names = True
+
+                if result[0] == 'hashed_attrs':
+                    cls.hashed_attrs = result[1:]
+
+    @classmethod
     def add_hash_to_rows(cls, rows, overwrite_rows=False):
         """
         Adds hash to rows.
@@ -587,7 +615,7 @@ class Base:
         Prepares rows for insert by checking if table has been validated for insert, adds constant_attrs and performs hashing. 
         """
         
-        if not cls.is_insert_validated:
+        if not cls._is_insert_validated:
             cls.insert_validation()
         
         if constant_attrs != {}:
@@ -671,7 +699,7 @@ class MasterBase(Base):
         cls_parts = [getattr(cls, d) for d in dir(cls) if inspect.isclass(getattr(cls, d)) and issubclass(getattr(cls, d), dj.Part)]
         for cls_part in [p.full_table_name for p in cls_parts]:
             if cls_part not in super().parts(cls):
-                warnings.warn('Part table defined in class definition not found in DataJoint graph. Reload dependencies.')
+                logging.warning('Part table defined in class definition not found in DataJoint graph. Reload dependencies.')
 
         if not as_cls:
             return super().parts(cls, as_objects=as_objects)
@@ -750,7 +778,7 @@ class MasterBase(Base):
         parts = cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, parts_kws=parts_kws)
         
         if join_with_master:
-            parts = [dj.FreeTable(cls.connection, cls.full_table_name)] + parts
+            parts = [FreeTable(cls.connection, cls.full_table_name)] + parts
 
         collisions = None
         if join_method is None:
@@ -943,7 +971,7 @@ class MasterBase(Base):
         :param constant_attrs (dict): Python dictionary to add to every row of rows
         :overwrite_rows (bool): Whether to overwrite key/ values in rows. If False, conflicting keys will raise a ValidationError.
         """
-        if not cls.is_insert_validated:
+        if not cls._is_insert_validated:
             cls.insert_validation()
         
         if insert_to_parts is not None:
@@ -1081,78 +1109,174 @@ class Imported(MasterBase, dj.Imported):
 class Part(PartBase, dj.Part):
     pass
 
-# VIRTUAL MODULES
+# Utilities
 
-class VirtualModule:   
-    @classmethod
-    def parse_hash_info_from_header(cls):
+def enable_datajoint_flags(enable_python_native_blobs=True):
+    """
+    Enable experimental datajoint features
+    
+    These flags are required by 0.12.0+ (for now).
+    """
+    dj.config['enable_python_native_blobs'] = enable_python_native_blobs
+    dj.errors._switch_filepath_types(True)
+    dj.errors._switch_adapted_types(True)
+
+
+def register_externals(external_stores):
+    """
+    Registers external stores to DataJoint.
+    """
+    if 'stores' not in dj.config:
+        dj.config['stores'] = external_stores
+    else:
+        dj.config['stores'].update(external_stores)
+
+
+def make_store_dict(path):
+    return {
+        'protocol': 'file',
+        'location': str(path),
+        'stage': str(path)
+    }
+
+
+def _get_calling_context() -> locals:
+    # get the calling namespace
+    try:
+        frame = inspect.currentframe().f_back
+        context = frame.f_locals
+    finally:
+        del frame
+    return context
+
+
+def add_objects(objects, context=None):
+    """
+    Imports the adapters for a schema_name into the global namespace.
+    """   
+    if context is None:
+        # if context is missing, use the calling namespace
+        try:
+            frame = inspect.currentframe().f_back
+            context = frame.f_locals
+        finally:
+            del frame
+    
+    for name, obj in objects.items():
+        context[name] = obj
+
+
+djp_mapping = {
+    'Lookup': Lookup,
+    'Manual': Manual,
+    'Computed': Computed,
+    'Imported': Imported,
+    'Part': Part
+}
+
+def add_datajoint_plus(module):
+    """
+    Adds DataJointPlus recursively to DataJoint tables inside the module.
+    """
+    try:
+        for name in dir(module):
+            if name in ['key_source', '_master', 'master']:
+                continue
+            obj = getattr(module, name)
+            if inspect.isclass(obj) and issubclass(obj, UserTable) and not issubclass(obj, Base):
+                bases = []
+                for b in obj.__bases__:
+                    if issubclass(b, UserTable):
+                        b = djp_mapping[b.__name__]
+                    bases.append(b)
+                obj.__bases__ = tuple(bases)
+                obj.parse_hash_info_from_header()
+                add_datajoint_plus(obj)
+    except:
+        logging.warning(f'Could not add DataJointPlus to: {name}.')
+        traceback.print_exc()
+
+
+def reassign_master_attribute(module):
+    """
+    Overwrite .master attribute in DataJoint part tables to map to master class from current module. This is required if the DataJoint table is inherited.
+    """
+    for name in dir(module):
+        # Get DataJoint tables
+        if inspect.isclass(getattr(module, name)) and issubclass(getattr(module, name), dj.Table):
+            obj = getattr(module, name)
+            for nested in dir(obj):
+                # Get Part tables
+                if inspect.isclass(getattr(obj, nested)) and issubclass(getattr(obj, nested), dj.Part):
+                    setattr(getattr(obj, nested), '_master', obj)
+
+
+class DataJointPlusModule(dj.VirtualModule):
+    """
+    DataJointPlus extension of DataJoint virtual module with the added ability to instantiate from an existing module.
+    """
+    def __init__(self, module_name=None, schema_name=None, module=None, schema_obj_name=None, add_externals=None, add_objects=None, create_schema=False, create_tables=False, connection=None, spawn_missing_classes=True, load_dependencies=True, warn=True):
         """
-        Parses hash_name and hashed_attrs from DataJoint table header and sets properties in class. 
+        Add DataJointPlus methods to all DataJoint user tables in a DataJoint virtual module or to an existing module. 
+        
+        To instantiate a DataJoint Virtual Module, provide args module_name and schema_name. 
+        
+        To modify an existing module, provide arg module. 
+        
+        :param module_name (str): displayed module name (if using DataJoint Virtual module)
+        :param schema_name (str): name of the database in mysql
+        :param module (module): module to modify
+        :param schema_obj_name (str): The name of the schema object you wish to instantiate (only needed if the module contains more than one DataJoint dj.schema object)
+        :param add_externals (dict): Dictionary mapping to external files.
+        :param add_objects (dict): additional objects to add to the module
+        :param spawn_missing_classes (bool): Only relevant if module provided. If True, adds DataJoint tables not in module but present in mysql as classes. 
+        :param load_dependencies (bool): Loads the DataJoint graph.
+        :param create_schema (bool): if True, create the schema on the database server
+        :param create_tables (bool): if True, module.schema can be used as the decorator for declaring new
+        :param connection (dj.Connection): a dj.Connection object to pass into the schema
+        :param warn (bool): if False, warnings are disabled. 
+        :return: the virtual module or modified module with DataJointPlus added.
         """
-        header = cls.heading.table_info['comment']
-        matches = re.findall(r'\|(.*?);', header)
-        if matches:
-            for match in matches:
-                result = re.findall('\w+', match)
-
-                if result[0] == 'hash_name':
-                    cls.hash_name = result[1]
-
-                if result[0] == 'hash_group':
-                    if result[1] == 'True':
-                        cls.hash_group = True
-
-                if result[0] == 'hash_table_name':
-                    if result[1] == 'True':
-                        cls.hash_table_name = True
-
-                if result[0] == 'hash_part_table_names':
-                    if result[1] == 'True':
-                        cls.hash_part_table_names = True
-
-                if result[0] == 'hashed_attrs':
-                    cls.hashed_attrs = result[1:]
-
-    @classmethod
-    def insert(cls, *args, **kwargs):
-        raise AttributeError(_vm_modification_err)
+        if schema_name:
+            assert not module, 'Provide either schema_name or module but not both.'
+            super().__init__(module_name=module_name if module_name else schema_name, schema_name=schema_name, add_objects=add_objects, create_schema=create_schema, create_tables=create_tables, connection=connection)
+            
+            if load_dependencies:
+                self.__dict__['schema'].connection.dependencies.load()
+            
+        elif module:
+            super(dj.VirtualModule, self).__init__(name=module.__name__)
+            if module_name:
+                if warn:
+                    logging.warning('module_name ignored when instantiated with module.')
+                
+            if schema_obj_name:
+                assert schema_obj_name in module.__dict__, f'schema_obj_name: {schema_obj_name} not found in module.'
+                schema_obj = module.__dict__[schema_obj_name]
+                assert isinstance(schema_obj, dj.Schema), f'schema object should be of type {dj.Schema} not {type(schema_obj)}.'
+            else:
+                schemas = {k: {'obj': v, 'database': v.database} for k, v in module.__dict__.items() if isinstance(v, dj.Schema)}
+                assert len(schemas.keys())==1, f"Found multiple schema objects with names {list(schemas.keys())}, mapping to respective databases {[v['database'] for v in schemas.values()]}. Specify the name of the schema object to instantiate with arg schema_obj_name." 
+                schema_obj = list(schemas.values())[0]['obj']
+            
+            self.__dict__.update(module.__dict__)
+            self.__dict__['schema'] = schema_obj
+            
+            if spawn_missing_classes:
+                schema_obj.spawn_missing_classes(context=self.__dict__)
+                
+            if load_dependencies:
+                schema_obj.connection.dependencies.load()
+                
+            if add_objects:
+                self.__dict__.update(add_objects)
+        
+        else:
+            raise ValueError('Provide schema_name or module.')      
+        
+        if add_externals:
+            register_externals(add_externals)
+            
+        add_datajoint_plus(self)
     
-    @classmethod
-    def _update(cls, *args, **kwargs):
-        raise AttributeError(_vm_modification_err)
-    
-    @classmethod
-    def delete(cls, *args, **kwargs):
-        raise AttributeError(_vm_modification_err)
-    
-    @classmethod
-    def delete_quick(cls, *args, **kwargs):
-        raise AttributeError(_vm_modification_err)
-    
-    @classmethod
-    def drop(cls, *args, **kwargs):
-        raise AttributeError(_vm_modification_err)
-    
-    @classmethod
-    def drop_quick(cls, *args, **kwargs):
-        raise AttributeError(_vm_modification_err)
-    
-
-class VirtualLookup(VirtualModule, Lookup):
-    pass
-
-
-class VirtualManual(VirtualModule, Manual):
-    pass
-
-
-class VirtualComputed(VirtualModule, Computed):
-    pass
-
-
-class VirtualImported(VirtualModule, Imported):
-    pass
-
-
-class VirtualPart(VirtualModule, Part):
-    pass
+create_djp_module = DataJointPlusModule

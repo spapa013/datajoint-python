@@ -1124,7 +1124,7 @@ def enable_datajoint_flags(enable_python_native_blobs=True):
 
 def register_externals(external_stores):
     """
-    Registers the external stores for a schema_name in this module.
+    Registers external stores to DataJoint.
     """
     if 'stores' not in dj.config:
         dj.config['stores'] = external_stores
@@ -1150,7 +1150,7 @@ def _get_calling_context() -> locals:
     return context
 
 
-def register_adapters(adapter_objects, context=None):
+def add_objects(objects, context=None):
     """
     Imports the adapters for a schema_name into the global namespace.
     """   
@@ -1162,8 +1162,8 @@ def register_adapters(adapter_objects, context=None):
         finally:
             del frame
     
-    for name, adapter in adapter_objects.items():
-        context[name] = adapter
+    for name, obj in objects.items():
+        context[name] = obj
 
 
 djp_mapping = {

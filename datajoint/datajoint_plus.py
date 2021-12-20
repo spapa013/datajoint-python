@@ -1214,7 +1214,7 @@ class DataJointPlusModule(dj.VirtualModule):
     """
     DataJointPlus extension of DataJoint virtual module with the added ability to instantiate from an existing module.
     """
-    def __init__(self, module_name=None, schema_name=None, module=None, schema_obj_name=None, add_externals=None, add_objects=None, spawn_missing_classes=True, load_dependencies=True, warn=True, dj_kwargs={}):
+    def __init__(self, module_name=None, schema_name=None, module=None, schema_obj_name=None, add_externals=None, add_objects=None, create_schema=False, create_tables=False, connection=None, spawn_missing_classes=True, load_dependencies=True, warn=True):
         """
         Add DataJointPlus methods to all DataJoint user tables in a DataJoint virtual module or to an existing module. 
         
@@ -1230,16 +1230,15 @@ class DataJointPlusModule(dj.VirtualModule):
         :param add_objects (dict): additional objects to add to the module
         :param spawn_missing_classes (bool): Only relevant if module provided. If True, adds DataJoint tables not in module but present in mysql as classes. 
         :param load_dependencies (bool): Loads the DataJoint graph.
-        :param dj_kwargs (dict): kwargs to pass to dj.VirtualModule (aka dj.create_virtual_module).
-            options: 
-                create_schema - if True, create the schema on the database server
-                create_tables - if True, module.schema can be used as the decorator for declaring new
-                connection - a dj.Connection object to pass into the schema
+        :param create_schema (bool): if True, create the schema on the database server
+        :param create_tables (bool): if True, module.schema can be used as the decorator for declaring new
+        :param connection (dj.Connection): a dj.Connection object to pass into the schema
+        :param warn (bool): if False, warnings are disabled. 
         :return: the virtual module or modified module with DataJointPlus added.
         """
         if schema_name:
             assert not module, 'Provide either schema_name or module but not both.'
-            super().__init__(module_name=module_name if module_name else schema_name, schema_name=schema_name, add_objects=add_objects, **dj_kwargs)
+            super().__init__(module_name=module_name if module_name else schema_name, schema_name=schema_name, add_objects=add_objects, create_schema=create_schema, create_tables=create_tables, connection=connection)
             
             if load_dependencies:
                 self.__dict__['schema'].connection.dependencies.load()

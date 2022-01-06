@@ -26,7 +26,7 @@ import logging
 from .table import FreeTable
 from .user_tables import UserTable
 
-__version__ = "0.0.17"
+__version__ = "0.0.18"
 
 
 class classproperty:
@@ -137,6 +137,26 @@ def format_table_name(table_name, snake_case=False, part=False):
             return table_name.lower().strip('_').replace('#','')
         else:
             return table_name.lower().replace('__','.').strip('_').replace('#','')
+
+
+def format_rows_to_df(rows):
+    """
+    Formats rows as pandas dataframe.
+
+    :param rows: pandas dataframe, datajoint query expression, dict or tuple
+
+    :returns: pandas dataframe
+    """
+    if isinstance(rows, pd.DataFrame):
+        rows = rows.copy()
+    elif (inspect.isclass(rows) and issubclass(rows, QueryExpression)) or isinstance(rows, QueryExpression):
+        rows = pd.DataFrame(rows.fetch())
+    elif isinstance(rows, list) or isinstance(rows, tuple):
+        rows = pd.DataFrame(rows)
+    else:
+        raise ValidationError('Format of rows not recognized. Try inserting a list of dictionaries, a DataJoint expression or a pandas dataframe.')
+    
+    return rows
 
 
 def parse_definition(definition):
@@ -259,11 +279,15 @@ class Base:
     hash_table_name = False
     _hash_len = None
 
+    # index
+    add_index = False
+
     # header params
     _add_hash_name_to_header = True
     _add_hashed_attrs_to_header = True
     _add_hash_params_to_header = True
-    
+    _add_index_to_header = True
+
     @classmethod
     def init_validation(cls, **kwargs):
         """
@@ -307,6 +331,7 @@ class Base:
             add_hash_group=cls.hash_group and cls._add_hash_params_to_header,
             add_hash_table_name=cls.hash_table_name and cls._add_hash_params_to_header,
             add_hash_part_table_names='hash_part_table_names' in kwargs and kwargs['hash_part_table_names'] and cls._add_hash_params_to_header,
+            add_index=cls.add_index and cls._add_index_to_header,
         )
 
     @classproperty
@@ -354,37 +379,39 @@ class Base:
         """
         Adds attributes to all rows.
 
+        Warning: rows must be able to be safely converted into a pandas dataframe.
+
         :param rows (pd.DataFrame, QueryExpression, list, tuple): rows to pass to DataJoint `insert`. 
         :param constant_attrs (dict): Python dictionary to add to every row in rows
         :overwrite_rows (bool): Whether to overwrite key/ values in rows. If False, conflicting keys will raise a ValidationError.
 
         :returns: modified rows
         """   
-        assert isinstance(constant_attrs, dict), 'arg "constant_attrs" must be a Python dictionary.'
+        assert isinstance(constant_attrs, dict), 'constant_attrs must be a dict'
+
+        rows = format_rows_to_df(rows)
+
+        for k, v in constant_attrs.items():
+            if _is_overwrite_validated(k, rows, overwrite_rows):
+                rows[k] = v
+
+        return rows
+
+    @classmethod
+    def add_index_to_rows(cls, rows):
+        """
+        Adds an index to rows.
         
-        if constant_attrs != {}:
-            if isinstance(rows, pd.DataFrame):
-                rows = copy.deepcopy(rows)
+        Warning: rows must be able to be safely converted into a pandas dataframe.
 
-                for k, v in constant_attrs.items():
-                    if _is_overwrite_validated(k, rows, overwrite_rows):
-                        rows[k] = v
+        :param rows (pd.DataFrame, QueryExpression, list, tuple): rows to pass to DataJoint `insert`. 
+        :param index_attr_name (str): name of newly created index attribute
+        :overwrite_rows (bool): Whether to overwrite key/ values in rows. If False, conflicting keys will raise a ValidationError.
 
-            elif (inspect.isclass(rows) and issubclass(rows, QueryExpression)) or isinstance(rows, QueryExpression): 
-                rows = rows.proj(..., **{k : f"'{v}'" for k, v in constant_attrs.items() if _is_overwrite_validated(k, rows.heading.names, overwrite_rows)})
-
-            elif isinstance(rows, list) or isinstance(rows, tuple):
-                rows = copy.deepcopy(rows)
-
-                for row in rows:
-                    assert isinstance(row, collections.abc.Mapping), 'Cannot hash attributes unless row attributes are named. Try inserting a pandas dataframe, a DataJoint expression or a list of dictionaries.'
-                    for k, v in constant_attrs.items():
-                        if _is_overwrite_validated(k, row.keys(), overwrite_rows):
-                            row[k] = v
-            else:
-                raise ValidationError('Row format not recognized. Try providing a pandas dataframe, a DataJoint expression or a list of dictionaries.')
-
-            return rows
+        :returns: modified rows
+        """   
+        rows = format_rows_to_df(rows)
+        return rows.reset_index()
 
     @classmethod
     def include_attrs(cls, *args):
@@ -448,12 +475,17 @@ class Base:
     def hash(cls, rows, unique=False):
         """
         Hashes rows.
+
+        Warning: rows must be able to be safely converted into a pandas dataframe.
         
         :param rows: rows containing attributes to be hashed. 
         :unique: If True, only unique hashes will be returned. If False, all hashes returned. 
         
         returns (list): list with hash(es)
         """
+        if cls.add_index:
+            rows = cls.add_index_to_rows(rows)
+            
         return cls.add_hash_to_rows(rows)[cls.hash_name].unique().tolist() if unique else cls.add_hash_to_rows(rows)[cls.hash_name].tolist()
 
     @classmethod
@@ -479,7 +511,7 @@ class Base:
         return cls & {cls.hash_name: hash}
 
     @classmethod
-    def _add_hash_info_to_header(cls, add_hash_name=False, add_hashed_attrs=False, add_hash_group=False, add_hash_table_name=False, add_hash_part_table_names=False):
+    def _add_hash_info_to_header(cls, add_hash_name=False, add_hashed_attrs=False, add_hash_group=False, add_hash_table_name=False, add_hash_part_table_names=False, add_index=False):
         """
         Modifies definition header to include hash_name and hashed_attrs with a parseable syntax. 
 
@@ -500,7 +532,7 @@ class Base:
             # append hash info to header
             if add_hash_name:
                 header += f" | hash_name = {cls.hash_name};" 
-            
+
             if add_hash_group:
                 header += f" | hash_group = True;" 
             
@@ -510,11 +542,14 @@ class Base:
             if add_hash_part_table_names:
                 header += f" | hash_part_table_names = True;" 
 
+            if add_index:
+                header += f" | add_index = True;" 
+
             if add_hashed_attrs:
                 header += f" | hashed_attrs = "
                 for i, h in enumerate(cls.hashed_attrs):
                     header += f"{h}, " if i+1 < len(cls.hashed_attrs) else f"{h};"
-            
+
             try:
                 # replace existing header with modified header
                 contents['headers'][0] = header
@@ -549,6 +584,9 @@ class Base:
                 if result[0] == 'hash_name':
                     cls.hash_name = result[1]
 
+                if result[0] == 'hashed_attrs':
+                    cls.hashed_attrs = result[1:]
+
                 if result[0] == 'hash_group':
                     if result[1] == 'True':
                         cls.hash_group = True
@@ -561,13 +599,16 @@ class Base:
                     if result[1] == 'True':
                         cls.hash_part_table_names = True
 
-                if result[0] == 'hashed_attrs':
-                    cls.hashed_attrs = result[1:]
+                if result[0] == 'add_index':
+                    if result[1] == 'True':
+                        cls.add_index = True
 
     @classmethod
     def add_hash_to_rows(cls, rows, overwrite_rows=False):
         """
-        Adds hash to rows.
+        Adds hash to rows. 
+        
+        Warning: rows must be able to be safely converted into a pandas dataframe.
 
         :param rows (pd.DataFrame, QueryExpression, list, tuple): rows to pass to DataJoint `insert`.
         :param hash_table_name (bool): Whether to include table_name in rows for hashing
@@ -584,16 +625,7 @@ class Base:
         else:
             table_name = None
             
-        if isinstance(rows, pd.DataFrame):
-            rows = rows.copy()
-        
-        elif (inspect.isclass(rows) and issubclass(rows, QueryExpression)) or isinstance(rows, QueryExpression):
-            rows = pd.DataFrame(rows.fetch())
-
-        elif isinstance(rows, list) or isinstance(rows, tuple):
-            rows = pd.DataFrame(rows)
-        else:
-            raise ValidationError('Format of rows not recognized. Try inserting a list of dictionaries, a DataJoint expression or a pandas dataframe.')
+        rows = format_rows_to_df(rows)
 
         for a in cls.hashed_attrs:
             assert a in rows.columns.values, f'hashed_attr "{a}" not in rows. Row names are: {rows.columns.values}'
@@ -618,8 +650,8 @@ class Base:
         if not cls._is_insert_validated:
             cls.insert_validation()
         
-        if constant_attrs != {}:
-            rows = cls.add_constant_attrs_to_rows(rows, constant_attrs, overwrite_rows)
+        if cls.add_index:
+            rows = cls.add_index_to_rows(rows)
 
         if cls.enable_hashing and not skip_hashing:
             try:
@@ -629,6 +661,10 @@ class Base:
                 new = err.args[0]
                 new += ' Or, to skip the hashing step, set skip_hashing=True.'
                 raise OverwriteError(new) from None
+        
+        # comes after hashing step so constant_attrs can't be hashed
+        if constant_attrs != {}:
+            rows = cls.add_constant_attrs_to_rows(rows, constant_attrs, overwrite_rows)
 
         return rows
 
@@ -1140,7 +1176,7 @@ def make_store_dict(path):
     }
 
 
-def _get_calling_context() -> locals:
+def get_calling_context():
     # get the calling namespace
     try:
         frame = inspect.currentframe().f_back
@@ -1155,12 +1191,7 @@ def add_objects(objects, context=None):
     Imports the adapters for a schema_name into the global namespace.
     """   
     if context is None:
-        # if context is missing, use the calling namespace
-        try:
-            frame = inspect.currentframe().f_back
-            context = frame.f_locals
-        finally:
-            del frame
+        context = get_calling_context()
     
     for name, obj in objects.items():
         context[name] = obj
@@ -1178,8 +1209,9 @@ def add_datajoint_plus(module):
     """
     Adds DataJointPlus recursively to DataJoint tables inside the module.
     """
-    try:
-        for name in dir(module):
+    
+    for name in dir(module):
+        try:
             if name in ['key_source', '_master', 'master']:
                 continue
             obj = getattr(module, name)
@@ -1192,9 +1224,9 @@ def add_datajoint_plus(module):
                 obj.__bases__ = tuple(bases)
                 obj.parse_hash_info_from_header()
                 add_datajoint_plus(obj)
-    except:
-        logging.warning(f'Could not add DataJointPlus to: {name}.')
-        traceback.print_exc()
+        except:
+            logging.warning(f'Could not add DataJointPlus to: {name}.')
+            traceback.print_exc()
 
 
 def reassign_master_attribute(module):

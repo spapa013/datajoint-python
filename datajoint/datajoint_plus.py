@@ -411,6 +411,7 @@ class Base:
         :returns: modified rows
         """   
         rows = format_rows_to_df(rows)
+        assert 'index' not in rows.columns, 'index is already in rows.'
         return rows.reset_index()
 
     @classmethod

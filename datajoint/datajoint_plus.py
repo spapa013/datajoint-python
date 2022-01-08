@@ -59,7 +59,7 @@ def generate_hash(rows, add_constant_columns:dict=None):
         assert isinstance(add_constant_columns, dict), f' arg add_constant_columns must be Python dictionary instance.'
         for k, v in add_constant_columns.items():
             df[k] = v
-    df = df.sort_index(axis=1).sort_values(by=[*df.columns])
+    df.sort_values(by=df.sort_index(axis=1).columns.tolist()) # permutation invariant
     encoded = simplejson.dumps(df.to_dict(orient='records')).encode()
     dhash = hashlib.md5()
     dhash.update(encoded)
@@ -917,7 +917,7 @@ class MasterBase(Base):
     r1p = restrict_one_part # alias for restrict_one_part
 
     @classmethod
-    def part_table_names_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, filter_out_len_zero=True, parts_kws={}):
+    def part_table_names_with_hash(cls, hash=None, hash_name=None, include_parts=None, exclude_parts=None, filter_out_len_zero=True, parts_kws={}):
         """
         Calls `restrict_parts_with_hash` with filter_out_len_zero=True by default.
 
@@ -929,7 +929,7 @@ class MasterBase(Base):
         return [format_table_name(r.table_name, part=True) for r in parts]
 
     @classmethod
-    def restrict_one_part_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, filter_out_len_zero=True, parts_kws={}):
+    def restrict_one_part_with_hash(cls, hash=None, hash_name=None, include_parts=None, exclude_parts=None, filter_out_len_zero=True, parts_kws={}):
         """
         Calls `restrict_parts_with_hash` with filter_out_len_zero=True by default. If not exactly one part table is returned, then a ValidationError will be raised.
 
@@ -949,9 +949,9 @@ class MasterBase(Base):
             return parts[0]
     
     r1pwh = restrict_one_part_with_hash # alias for restrict_one_part_with_hash
-
+    
     @classmethod
-    def restrict_parts_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, filter_out_len_zero=False, parts_kws={}):
+    def restrict_parts_with_hash(cls, hash=None, hash_name=None, include_parts=None, exclude_parts=None, filter_out_len_zero=False, parts_kws={}):
         """
         Checks all part tables and returns the part table that is successfully restricted by {'hash_name': hash}. 
 
@@ -966,13 +966,17 @@ class MasterBase(Base):
         :params include_parts, exclude_parts, parts_kws: see `restrict_parts`
 
         :returns: list of part tables after restriction
-        """  
+        """
         if hash_name is None and hasattr(cls, 'hash_name'):
             hash_name = cls.hash_name
 
         if hash_name is None:
             raise ValidationError('Table does not have "hash_name" defined, provide it to restrict with hash.')
-        
+
+        if hash is None:
+            assert len(cls) == 1, 'Provide hash or restrict table to one entry.'
+            hash = cls.fetch1(hash_name)
+
         parts = cls.restrict_parts(part_restr={hash_name: hash}, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, parts_kws=parts_kws)
 
         return [p for p in parts if hash_name in p.heading.names]

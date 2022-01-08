@@ -974,7 +974,7 @@ class MasterBase(Base):
             raise ValidationError('Table does not have "hash_name" defined, provide it to restrict with hash.')
 
         if hash is None:
-            assert len(cls) == 1, 'Provide hash or restrict table to one entry.'
+            assert len(cls()) == 1, 'Provide hash or restrict table to one entry.'
             hash = cls.fetch1(hash_name)
 
         parts = cls.restrict_parts(part_restr={hash_name: hash}, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, parts_kws=parts_kws)

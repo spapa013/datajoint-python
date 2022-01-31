@@ -352,10 +352,14 @@ class Base:
                 raise NotImplementedError(f'"index_name" cannot be named "index". Choose a different name (e.g. "idx").')
 
         # ensure sets are disjoint
-        _must_be_disjoint = [cls.hash_name, cls.hashed_attrs, cls.index_name]
-        _must_be_disjoint = [[a] if (not isinstance(a, list) and not isinstance(a, tuple)) else a for a in _must_be_disjoint]
-        _must_be_disjoint_names = ['hash_name', 'hashed_attrs', 'index_name']
-        cls._must_be_disjoint = {k: set(v) for k, v in zip(_must_be_disjoint_names, _must_be_disjoint) if v is not None}
+        cls._must_be_disjoint = {}
+        for name in ['hash_name', 'hashed_attrs', 'index_name']:
+            attr = getattr(cls, name)
+            if attr is not None:
+                if not isinstance(attr, list) and not isinstance(attr, tuple):
+                    cls._must_be_disjoint[name] = set([attr])
+                else:
+                    cls._must_be_disjoint[name] = set(attr)
         pairwise_disjoint_set_validation(list(cls._must_be_disjoint.values()), list(cls._must_be_disjoint.keys()))
 
         # modify header

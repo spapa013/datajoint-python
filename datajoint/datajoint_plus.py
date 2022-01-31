@@ -352,9 +352,11 @@ class Base:
                 raise NotImplementedError(f'"index_name" cannot be named "index". Choose a different name (e.g. "idx").')
 
         # ensure sets are disjoint
-        cls._disjoint_set_names = ['hash_name', 'hashed_attrs', 'index_name']
-        cls._disjoint_sets = [set([cls.hash_name]), set(cls.hashed_attrs), set([cls.index_name])]
-        pairwise_disjoint_set_validation(cls._disjoint_set_names, cls._disjoint_sets)
+        _must_be_disjoint = [cls.hash_name, cls.hashed_attrs, cls.index_name]
+        _must_be_disjoint = [[a] if (not isinstance(a, list) and not isinstance(a, tuple)) else a for a in _must_be_disjoint]
+        _must_be_disjoint_names = ['hash_name', 'hashed_attrs', 'index_name']
+        cls._must_be_disjoint = {k: set(v) for k, v in zip(_must_be_disjoint_names, _must_be_disjoint) if v is not None}
+        pairwise_disjoint_set_validation(list(cls._must_be_disjoint.values()), list(cls._must_be_disjoint.keys()))
 
         # modify header
         cls._add_hash_info_to_header(
@@ -378,7 +380,7 @@ class Base:
         Validation for insertion to DataJoint tables that are subclasses of abstract class Base. 
         """
         # ensure sets are disjoint
-        pairwise_disjoint_set_validation(cls._disjoint_set_names, cls._disjoint_sets)
+        pairwise_disjoint_set_validation(list(cls._must_be_disjoint.values()), list(cls._must_be_disjoint.keys()))
 
         # ensure "index" not in attributes
         if "index" in cls.heading.names:

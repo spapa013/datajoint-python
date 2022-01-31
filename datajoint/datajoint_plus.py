@@ -6,7 +6,6 @@ The primary use case of datajoint_plus is to enable automatic hashing in DataJoi
 datajoint_plus disables table modification from virtual modules. 
 """
 
-from os import confstr_names, error
 import datajoint as dj
 from datajoint.expression import QueryExpression
 import inspect
@@ -25,6 +24,7 @@ import copy
 import logging
 from .table import FreeTable
 from .user_tables import UserTable
+from itertools import combinations
 
 __version__ = "0.0.18"
 
@@ -156,6 +156,8 @@ def format_rows_to_df(rows):
     else:
         raise ValidationError('Format of rows not recognized. Try inserting a list of dictionaries, a DataJoint expression or a pandas dataframe.')
     
+    assert "index" not in rows.columns, 'rows cannot contain an attribute named "index".'
+
     return rows
 
 
@@ -265,6 +267,29 @@ class JoinMethod(Enum):
     ALL = 'rename_all'
 
 
+def pairwise_disjoint_set_validation(sets:list, set_names:list=None, error=NotImplementedError):
+    """
+    Checks all pairs of sets in provided list for disjointness. Will raise error if any two sets are not disjoint.
+
+    :param sets: list of sets to check.
+    :param set_names: (optional) list of set names to index and provide in error message if disjoint check fails. \
+        Length and order must match "sets". Defaults to generic error message.
+    :param error: (optional) error to throw upon validation failure. Defaults to NotImplementedError.
+
+    :returns: None if validation passes, error if fail. 
+    """
+    if set_names is not None:
+        assert len(sets) == len(set_names), 'Length of sets must match length of set_names'
+
+    set_combinations = list(combinations(np.arange(len(sets)), 2))
+    for c  in set_combinations:
+        if not set.isdisjoint(sets[c[0]], sets[c[1]]):
+            if set_names is not None:
+                raise error(f'attributes in "{set_names[c[0]]}" and "{set_names[c[1]]}" must be disjoint.')
+            else:
+                raise error(f'attributes in at least two provided sets are not disjoint.')
+
+
 class Base:
     _is_insert_validated = False
     _enable_table_modification = True
@@ -280,13 +305,13 @@ class Base:
     _hash_len = None
 
     # index
-    add_index = False
+    index_name = None
 
     # header params
     _add_hash_name_to_header = True
     _add_hashed_attrs_to_header = True
     _add_hash_params_to_header = True
-    _add_index_to_header = True
+    _add_index_name_to_header = True
 
     @classmethod
     def init_validation(cls, **kwargs):
@@ -296,7 +321,7 @@ class Base:
         for attr in ['enable_hashing', 'hash_group', 'hash_table_name', '_add_hash_name_to_header', '_add_hash_params_to_header', '_add_hashed_attrs_to_header']:
             assert isinstance(getattr(cls, attr), bool), f'"{attr}" must be boolean.'           
 
-        for attr in ['hash_name', 'hashed_attrs']:
+        for attr in ['hash_name', 'hashed_attrs', 'index_name']:
             assert not isinstance(getattr(cls, attr), bool), f'"{attr}" must not be boolean.'
         
         if cls.enable_hashing:
@@ -304,13 +329,15 @@ class Base:
                 if getattr(cls, required) is None:
                     raise NotImplementedError(f'Hashing requires class to implement the property "{required}".')
         
-        # ensure one attribute for "hash_name"
-        if cls.hash_name is not None:
-            if isinstance(cls.hash_name, list) or isinstance(cls.hash_name, tuple):
-                if len(cls.hash_name) > 1:
-                    raise NotImplementedError(f'Only one attribute allowed in "hash_name".')
-                else:
-                    cls.hash_name = cls.hash_name[0]
+        # ensure one attribute
+        for name in ['hash_name', 'index_name']:
+            attr = getattr(cls, name)
+            if attr is not None:
+                if isinstance(attr, list) or isinstance(attr, tuple):
+                    if len(attr) > 1:
+                        raise NotImplementedError(f'Only one attribute allowed in "{name}".')
+                    else:
+                        attr = attr[0]
 
         # ensure "hashed_attrs" wrapped in list or tuple
         if cls.hashed_attrs is not None:
@@ -319,10 +346,15 @@ class Base:
             else:
                 cls.hashed_attrs = cls.hashed_attrs
 
-        # ensure hash_name and hashed_attrs are disjoint
-        if cls.hash_name is not None and cls.hashed_attrs is not None:
-            if not set((cls.hash_name,)).isdisjoint(cls.hashed_attrs):
-                raise NotImplementedError(f'attributes in "hash_name" and "hashed_attrs" must be disjoint.')
+        # ensure "index_name" != "index"
+        if cls.index_name is not None:
+            if cls.index_name == "index":
+                raise NotImplementedError(f'"index_name" cannot be named "index". Choose a different name (e.g. "idx").')
+
+        # ensure sets are disjoint
+        cls._disjoint_set_names = ['hash_name', 'hashed_attrs', 'index_name']
+        cls._disjoint_sets = [set([cls.hash_name]), set(cls.hashed_attrs), set([cls.index_name])]
+        pairwise_disjoint_set_validation(cls._disjoint_set_names, cls._disjoint_sets)
 
         # modify header
         cls._add_hash_info_to_header(
@@ -331,7 +363,7 @@ class Base:
             add_hash_group=cls.hash_group and cls._add_hash_params_to_header,
             add_hash_table_name=cls.hash_table_name and cls._add_hash_params_to_header,
             add_hash_part_table_names='hash_part_table_names' in kwargs and kwargs['hash_part_table_names'] and cls._add_hash_params_to_header,
-            add_index=cls.add_index and cls._add_index_to_header,
+            add_index_name=cls.index_name is not None and cls._add_index_name_to_header,
         )
 
     @classproperty
@@ -345,10 +377,12 @@ class Base:
         """
         Validation for insertion to DataJoint tables that are subclasses of abstract class Base. 
         """
-        # ensure hash_name and hashed_attrs are disjoint
-        if cls.hash_name is not None and cls.hashed_attrs is not None:
-            if not set((cls.hash_name,)).isdisjoint(cls.hashed_attrs):
-                raise NotImplementedError(f'attributes in "hash_name" and "hashed_attrs" must be disjoint.')
+        # ensure sets are disjoint
+        pairwise_disjoint_set_validation(cls._disjoint_set_names, cls._disjoint_sets)
+
+        # ensure "index" not in attributes
+        if "index" in cls.heading.names:
+            raise NotImplementedError(f'attributes cannot be named "index".')
 
         cls._is_insert_validated = True
 
@@ -411,8 +445,8 @@ class Base:
         :returns: modified rows
         """   
         rows = format_rows_to_df(rows)
-        assert 'index' not in rows.columns, 'index is already in rows.'
-        return rows.reset_index()
+        assert cls.index_name not in rows.columns, f'Cannot add index attribute named "{cls.index_name}" to rows because an attribute with this name already exists in rows.'
+        return rows.reset_index().rename(columns={'index': cls.index_name})
 
     @classmethod
     def include_attrs(cls, *args):
@@ -488,7 +522,7 @@ class Base:
         
         returns (list): list with hash(es)
         """
-        if cls.add_index:
+        if cls.index_name is not None:
             rows = cls.add_index_to_rows(rows)
             
         return cls.add_hash_to_rows(rows, **kwargs)[cls.hash_name].unique().tolist() if unique else cls.add_hash_to_rows(rows, **kwargs)[cls.hash_name].tolist()
@@ -516,7 +550,7 @@ class Base:
         return cls & {cls.hash_name: hash}
 
     @classmethod
-    def _add_hash_info_to_header(cls, add_hash_name=False, add_hashed_attrs=False, add_hash_group=False, add_hash_table_name=False, add_hash_part_table_names=False, add_index=False):
+    def _add_hash_info_to_header(cls, add_hash_name=False, add_hashed_attrs=False, add_hash_group=False, add_hash_table_name=False, add_hash_part_table_names=False, add_index_name=False):
         """
         Modifies definition header to include hash_name and hashed_attrs with a parseable syntax. 
 
@@ -547,8 +581,8 @@ class Base:
             if add_hash_part_table_names:
                 header += f" | hash_part_table_names = True;" 
 
-            if add_index:
-                header += f" | add_index = True;" 
+            if add_index_name:
+                header += f" | index_name = {cls.index_name};" 
 
             if add_hashed_attrs:
                 header += f" | hashed_attrs = "
@@ -604,9 +638,8 @@ class Base:
                     if result[1] == 'True':
                         cls.hash_part_table_names = True
 
-                if result[0] == 'add_index':
-                    if result[1] == 'True':
-                        cls.add_index = True
+                if result[0] == 'index_name':
+                    cls.index_name = result[1]
 
     @classmethod
     def add_hash_to_rows(cls, rows, overwrite_rows=False):
@@ -655,7 +688,7 @@ class Base:
         if not cls._is_insert_validated:
             cls.insert_validation()
         
-        if cls.add_index:
+        if cls.index_name is not None:
             rows = cls.add_index_to_rows(rows)
 
         if cls.enable_hashing and not skip_hashing:

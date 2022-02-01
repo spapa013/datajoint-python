@@ -321,13 +321,15 @@ class Base:
                 if getattr(cls, required) is None:
                     raise NotImplementedError(f'Hashing requires class to implement the property "{required}".')
         
-        # ensure one attribute for "hash_name"
-        if cls.hash_name is not None:
-            if isinstance(cls.hash_name, list) or isinstance(cls.hash_name, tuple):
-                if len(cls.hash_name) > 1:
-                    raise NotImplementedError(f'Only one attribute allowed in "hash_name".')
-                else:
-                    cls.hash_name = cls.hash_name[0]
+        # ensure one attribute
+        for name in ['hash_name']:
+            attr = getattr(cls, name)
+            if attr is not None:
+                if isinstance(attr, list) or isinstance(attr, tuple):
+                    if len(attr) > 1:
+                        raise NotImplementedError(f'Only one attribute allowed in "{name}".')
+                    else:
+                        attr = attr[0]
 
         # ensure "hashed_attrs" wrapped in list or tuple
         if cls.hashed_attrs is not None:

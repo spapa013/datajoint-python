@@ -6,7 +6,6 @@ The primary use case of datajoint_plus is to enable automatic hashing in DataJoi
 datajoint_plus disables table modification from virtual modules. 
 """
 
-from os import confstr_names, error
 import datajoint as dj
 from datajoint.expression import QueryExpression
 import inspect

@@ -1202,8 +1202,9 @@ def add_datajoint_plus(module):
     """
     Adds DataJointPlus recursively to DataJoint tables inside the module.
     """
-    try:
-        for name in dir(module):
+    
+    for name in dir(module):
+        try:
             if name in ['key_source', '_master', 'master']:
                 continue
             obj = getattr(module, name)
@@ -1216,9 +1217,9 @@ def add_datajoint_plus(module):
                 obj.__bases__ = tuple(bases)
                 obj.parse_hash_info_from_header()
                 add_datajoint_plus(obj)
-    except:
-        logging.warning(f'Could not add DataJointPlus to: {name}.')
-        traceback.print_exc()
+        except:
+            logging.warning(f'Could not add DataJointPlus to: {name}.')
+            traceback.print_exc()
 
 
 def reassign_master_attribute(module):

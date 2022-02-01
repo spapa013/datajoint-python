@@ -24,6 +24,7 @@ import copy
 import logging
 from .table import FreeTable
 from .user_tables import UserTable
+from itertools import combinations
 
 __version__ = "0.0.18"
 
@@ -264,6 +265,27 @@ class JoinMethod(Enum):
     ALL = 'rename_all'
 
 
+def pairwise_disjoint_set_validation(sets:list, set_names:list=None, error=Exception):
+    """
+    Checks all pairs of sets in provided list for disjointness. Will raise error if any two sets are not disjoint.
+    :param sets: list of sets to check.
+    :param set_names: (optional) list of set names to index and provide in error message if disjoint check fails. \
+        Length and order must match "sets". Defaults to generic error message.
+    :param error: (optional) error to throw upon validation failure. Defaults to Exception.
+    :returns: None if validation passes, error if fail. 
+    """
+    if set_names is not None:
+        assert len(sets) == len(set_names), 'Length of sets must match length of set_names'
+
+    set_combinations = list(combinations(np.arange(len(sets)), 2))
+    for c in set_combinations:
+        if not set.isdisjoint(sets[c[0]], sets[c[1]]):
+            if set_names is not None:
+                raise error(f'attributes in "{set_names[c[0]]}" and "{set_names[c[1]]}" must be disjoint.')
+            else:
+                raise error(f'attributes in at least two provided sets are not disjoint.')
+
+
 class Base:
     _is_insert_validated = False
     _enable_table_modification = True
@@ -314,10 +336,16 @@ class Base:
             else:
                 cls.hashed_attrs = cls.hashed_attrs
 
-        # ensure hash_name and hashed_attrs are disjoint
-        if cls.hash_name is not None and cls.hashed_attrs is not None:
-            if not set((cls.hash_name,)).isdisjoint(cls.hashed_attrs):
-                raise NotImplementedError(f'attributes in "hash_name" and "hashed_attrs" must be disjoint.')
+        # ensure sets are disjoint
+        cls._must_be_disjoint = {}
+        for name in ['hash_name', 'hashed_attrs']:
+            attr = getattr(cls, name)
+            if attr is not None:
+                if not isinstance(attr, list) and not isinstance(attr, tuple):
+                    cls._must_be_disjoint[name] = set([attr])
+                else:
+                    cls._must_be_disjoint[name] = set(attr)
+        pairwise_disjoint_set_validation(list(cls._must_be_disjoint.values()), list(cls._must_be_disjoint.keys()), error=NotImplementedError)
 
         # modify header
         cls._add_hash_info_to_header(
@@ -339,10 +367,8 @@ class Base:
         """
         Validation for insertion to DataJoint tables that are subclasses of abstract class Base. 
         """
-        # ensure hash_name and hashed_attrs are disjoint
-        if cls.hash_name is not None and cls.hashed_attrs is not None:
-            if not set((cls.hash_name,)).isdisjoint(cls.hashed_attrs):
-                raise NotImplementedError(f'attributes in "hash_name" and "hashed_attrs" must be disjoint.')
+        # ensure sets are disjoint
+        pairwise_disjoint_set_validation(list(cls._must_be_disjoint.values()), list(cls._must_be_disjoint.keys()), error=NotImplementedError)
 
         cls._is_insert_validated = True
 

@@ -370,7 +370,12 @@ class Base:
         Validation for insertion to DataJoint tables that are subclasses of abstract class Base. 
         """
         # ensure sets are disjoint
-        pairwise_disjoint_set_validation(list(cls._must_be_disjoint.values()), list(cls._must_be_disjoint.keys()), error=NotImplementedError)
+        pairwise_disjoint_set_validation(list(cls._must_be_disjoint.values()), list(cls._must_be_disjoint.keys()), error=AttributeError)
+
+
+        # ensure "index" not in attributes
+        if "index" in cls.heading.names:
+            raise AttributeError(f'Attributes cannot be named "index". There is a bug in this DJ version that does not handle this keyword correctly with respect to MySQL.')
 
         cls._is_insert_validated = True
 

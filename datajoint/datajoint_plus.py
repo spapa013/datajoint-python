@@ -1264,7 +1264,7 @@ class DataJointPlusModule(dj.VirtualModule):
         :param create_schema (bool): if True, create the schema on the database server
         :param create_tables (bool): if True, module.schema can be used as the decorator for declaring new
         :param connection (dj.Connection): a dj.Connection object to pass into the schema
-        :param enable_datajoint_flags (bool): If true runs enable_datajoint_flags. May be necessary to use adapters. 
+        :param enable_dj_flags (bool): If true runs djp.enable_datajoint_flags. May be necessary to use adapters. 
         :param warn (bool): if False, warnings are disabled. 
         :return: the virtual module or modified module with DataJointPlus added.
         """

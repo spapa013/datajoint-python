@@ -26,7 +26,7 @@ import logging
 from .table import FreeTable
 from .user_tables import UserTable
 
-__version__ = "0.0.17"
+__version__ = "0.0.18"
 
 
 class classproperty:

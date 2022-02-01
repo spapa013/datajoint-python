@@ -466,7 +466,8 @@ class Base:
         """
         Hashes rows and requires a single hash as output.
         
-        See `hash` for kwargs.
+        Warning: rows must be able to be safely converted into a pandas dataframe.
+        kwargs: args for `hash`
         
         :returns (str): hash
         """
@@ -475,16 +476,18 @@ class Base:
         return hashes[0]
 
     @classmethod
-    def hash(cls, rows, unique=False):
+    def hash(cls, rows, unique=False, **kwargs):
         """
         Hashes rows.
+        Warning: rows must be able to be safely converted into a pandas dataframe.
         
+        kwargs: args for `add_hash_to_rows`
         :param rows: rows containing attributes to be hashed. 
         :unique: If True, only unique hashes will be returned. If False, all hashes returned. 
         
         returns (list): list with hash(es)
-        """
-        return cls.add_hash_to_rows(rows)[cls.hash_name].unique().tolist() if unique else cls.add_hash_to_rows(rows)[cls.hash_name].tolist()
+        """ 
+        return cls.add_hash_to_rows(rows, **kwargs)[cls.hash_name].unique().tolist() if unique else cls.add_hash_to_rows(rows, **kwargs)[cls.hash_name].tolist()
 
     @classmethod
     def restrict_with_hash(cls, hash, hash_name=None):

@@ -736,18 +736,18 @@ class MasterBase(Base):
             return cls_parts
 
     @classmethod
-    def number_of_parts(cls, parts_kws={}):
+    def number_of_parts(cls, reload_dependencies=False):
         """
         Returns the number of part tables belonging to cls. 
         """
-        return len(cls.parts(**parts_kws))
+        return len(cls.parts(reload_dependencies=reload_dependencies))
 
     @classmethod
-    def has_parts(cls, parts_kws={}):
+    def has_parts(cls, reload_dependencies=False):
         """
         Returns True if cls has part tables. 
         """
-        return cls.number_of_parts(parts_kws) > 0
+        return cls.number_of_parts(reload_dependencies=reload_dependencies) > 0
 
     @classmethod
     def _format_parts(cls, parts):
@@ -774,7 +774,7 @@ class MasterBase(Base):
         return new
 
     @classmethod
-    def union_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, filter_out_len_zero=False, parts_kws={}):
+    def union_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, filter_out_len_zero=False, as_objects=False, as_cls=False, reload_dependencies=False):
         """
         Returns union of part table primary keys after optional restriction. Requires all part tables in union to have identical primary keys. 
 
@@ -782,18 +782,18 @@ class MasterBase(Base):
 
         :returns: numpy array object
         """  
-        return np.sum([p.proj() for p in cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, parts_kws=parts_kws)])
+        return np.sum([p.proj() for p in cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, as_objects=as_objects, as_cls=as_cls, reload_dependencies=reload_dependencies)])
 
 #     @classmethod
 #     def keys_not_in_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, master_restr={}, parts_kws={}):
 #         return (cls & master_restr) - cls.union_parts(include_parts=include_parts, exclude_parts=exclude_parts, part_restr=part_restr, parts_kws=parts_kws)
 
     @classmethod
-    def join_parts(cls, part_restr={}, join_method=None, join_with_master=False, include_parts=None, exclude_parts=None, filter_out_len_zero=False, parts_kws={}):
+    def join_parts(cls, part_restr={}, join_method=None, join_with_master=False, include_parts=None, exclude_parts=None, filter_out_len_zero=False, as_objects=False, as_cls=False, reload_dependencies=False):
         """
         Returns join of part tables after optional restriction. 
 
-        :params part_restr, include_parts, exclude_parts, parts_kws: see `restrict_parts`.
+        :params part_restr, include_parts, exclude_parts, as_objects, : see `restrict_parts`.
         :param join_method (str):
             - 'primary_only' - will project out secondary keys and will only join on primary keys
             - 'rename_secondaries' - will add the part table to all secondary keys
@@ -804,7 +804,7 @@ class MasterBase(Base):
 
         :returns: numpy array object
         """
-        parts = cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, parts_kws=parts_kws)
+        parts = cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, as_objects=as_objects, as_cls=as_cls, reload_dependencies=reload_dependencies)
         
         if join_with_master:
             parts = [FreeTable(cls.connection, cls.full_table_name)] + parts
@@ -1245,7 +1245,7 @@ class DataJointPlusModule(dj.VirtualModule):
     """
     DataJointPlus extension of DataJoint virtual module with the added ability to instantiate from an existing module.
     """
-    def __init__(self, module_name=None, schema_name=None, module=None, schema_obj_name=None, add_externals=None, add_objects=None, create_schema=False, create_tables=False, connection=None, spawn_missing_classes=True, load_dependencies=True, warn=True):
+    def __init__(self, module_name=None, schema_name=None, module=None, schema_obj_name=None, add_externals=None, add_objects=None, create_schema=False, create_tables=False, connection=None, spawn_missing_classes=True, load_dependencies=True, enable_datajoint_flags=True, warn=True):
         """
         Add DataJointPlus methods to all DataJoint user tables in a DataJoint virtual module or to an existing module. 
         
@@ -1264,6 +1264,7 @@ class DataJointPlusModule(dj.VirtualModule):
         :param create_schema (bool): if True, create the schema on the database server
         :param create_tables (bool): if True, module.schema can be used as the decorator for declaring new
         :param connection (dj.Connection): a dj.Connection object to pass into the schema
+        :param enable_datajoint_flags (bool): If true runs enable_datajoint_flags. May be necessary to use adapters. 
         :param warn (bool): if False, warnings are disabled. 
         :return: the virtual module or modified module with DataJointPlus added.
         """
@@ -1306,6 +1307,9 @@ class DataJointPlusModule(dj.VirtualModule):
         
         if add_externals:
             register_externals(add_externals)
+        
+        if enable_datajoint_flags:
+            enable_datajoint_flags()
             
         add_datajoint_plus(self)
     

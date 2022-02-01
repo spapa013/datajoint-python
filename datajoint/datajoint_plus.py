@@ -1245,7 +1245,7 @@ class DataJointPlusModule(dj.VirtualModule):
     """
     DataJointPlus extension of DataJoint virtual module with the added ability to instantiate from an existing module.
     """
-    def __init__(self, module_name=None, schema_name=None, module=None, schema_obj_name=None, add_externals=None, add_objects=None, create_schema=False, create_tables=False, connection=None, spawn_missing_classes=True, load_dependencies=True, enable_datajoint_flags=True, warn=True):
+    def __init__(self, module_name=None, schema_name=None, module=None, schema_obj_name=None, add_externals=None, add_objects=None, create_schema=False, create_tables=False, connection=None, spawn_missing_classes=True, load_dependencies=True, enable_dj_flags=True, warn=True):
         """
         Add DataJointPlus methods to all DataJoint user tables in a DataJoint virtual module or to an existing module. 
         
@@ -1308,7 +1308,7 @@ class DataJointPlusModule(dj.VirtualModule):
         if add_externals:
             register_externals(add_externals)
         
-        if enable_datajoint_flags:
+        if enable_dj_flags:
             enable_datajoint_flags()
             
         add_datajoint_plus(self)

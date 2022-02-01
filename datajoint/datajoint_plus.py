@@ -138,6 +138,26 @@ def format_table_name(table_name, snake_case=False, part=False):
             return table_name.lower().replace('__','.').strip('_').replace('#','')
 
 
+def format_rows_to_df(rows):
+    """
+    Formats rows as pandas dataframe.
+    :param rows: pandas dataframe, datajoint query expression, dict or tuple
+    :returns: pandas dataframe
+    """
+    if isinstance(rows, pd.DataFrame):
+        rows = rows.copy()
+    elif (inspect.isclass(rows) and issubclass(rows, QueryExpression)) or isinstance(rows, QueryExpression):
+        rows = pd.DataFrame(rows.fetch())
+    elif isinstance(rows, list) or isinstance(rows, tuple):
+        rows = pd.DataFrame(rows)
+    else:
+        raise ValidationError('Format of rows not recognized. Try inserting a list of dictionaries, a DataJoint expression or a pandas dataframe.')
+
+    assert "index" not in rows.columns, 'rows cannot contain an attribute named "index".'
+
+    return rows
+
+
 def parse_definition(definition):
     """
     Parses DataJoint definitions. Extracts the following line types, where lines are separated by newlines `\\n`:
@@ -352,38 +372,21 @@ class Base:
     def add_constant_attrs_to_rows(cls, rows, constant_attrs:dict={}, overwrite_rows=False):
         """
         Adds attributes to all rows.
-
+        Warning: rows must be able to be safely converted into a pandas dataframe.
         :param rows (pd.DataFrame, QueryExpression, list, tuple): rows to pass to DataJoint `insert`. 
         :param constant_attrs (dict): Python dictionary to add to every row in rows
         :overwrite_rows (bool): Whether to overwrite key/ values in rows. If False, conflicting keys will raise a ValidationError.
-
         :returns: modified rows
         """   
-        assert isinstance(constant_attrs, dict), 'arg "constant_attrs" must be a Python dictionary.'
-        
-        if constant_attrs != {}:
-            if isinstance(rows, pd.DataFrame):
-                rows = copy.deepcopy(rows)
+        assert isinstance(constant_attrs, dict), 'constant_attrs must be a dict'
 
-                for k, v in constant_attrs.items():
-                    if _is_overwrite_validated(k, rows, overwrite_rows):
-                        rows[k] = v
+        rows = format_rows_to_df(rows)
 
-            elif (inspect.isclass(rows) and issubclass(rows, QueryExpression)) or isinstance(rows, QueryExpression): 
-                rows = rows.proj(..., **{k : f"'{v}'" for k, v in constant_attrs.items() if _is_overwrite_validated(k, rows.heading.names, overwrite_rows)})
+        for k, v in constant_attrs.items():
+            if _is_overwrite_validated(k, rows, overwrite_rows):
+                rows[k] = v
 
-            elif isinstance(rows, list) or isinstance(rows, tuple):
-                rows = copy.deepcopy(rows)
-
-                for row in rows:
-                    assert isinstance(row, collections.abc.Mapping), 'Cannot hash attributes unless row attributes are named. Try inserting a pandas dataframe, a DataJoint expression or a list of dictionaries.'
-                    for k, v in constant_attrs.items():
-                        if _is_overwrite_validated(k, row.keys(), overwrite_rows):
-                            row[k] = v
-            else:
-                raise ValidationError('Row format not recognized. Try providing a pandas dataframe, a DataJoint expression or a list of dictionaries.')
-
-            return rows
+        return rows
 
     @classmethod
     def include_attrs(cls, *args):
@@ -566,12 +569,12 @@ class Base:
     @classmethod
     def add_hash_to_rows(cls, rows, overwrite_rows=False):
         """
-        Adds hash to rows.
-
+        Adds hash to rows. 
+        
+        Warning: rows must be able to be safely converted into a pandas dataframe.
         :param rows (pd.DataFrame, QueryExpression, list, tuple): rows to pass to DataJoint `insert`.
         :param hash_table_name (bool): Whether to include table_name in rows for hashing
         :overwrite_rows (bool): Whether to overwrite key/ values in rows. If False, conflicting keys will raise a ValidationError. 
-
         :returns: modified rows
         """
         assert cls.hashed_attrs is not None, 'Table must have hashed_attrs defined. Check if hashing was enabled for this table.'
@@ -583,16 +586,7 @@ class Base:
         else:
             table_name = None
             
-        if isinstance(rows, pd.DataFrame):
-            rows = rows.copy()
-        
-        elif (inspect.isclass(rows) and issubclass(rows, QueryExpression)) or isinstance(rows, QueryExpression):
-            rows = pd.DataFrame(rows.fetch())
-
-        elif isinstance(rows, list) or isinstance(rows, tuple):
-            rows = pd.DataFrame(rows)
-        else:
-            raise ValidationError('Format of rows not recognized. Try inserting a list of dictionaries, a DataJoint expression or a pandas dataframe.')
+        rows = format_rows_to_df(rows)
 
         for a in cls.hashed_attrs:
             assert a in rows.columns.values, f'hashed_attr "{a}" not in rows. Row names are: {rows.columns.values}'

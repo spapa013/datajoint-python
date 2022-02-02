@@ -286,6 +286,28 @@ def pairwise_disjoint_set_validation(sets:list, set_names:list=None, error=Excep
                 raise error(f'attributes in at least two provided sets are not disjoint.')
 
 
+def _validate_hash_name_type_and_parse_hash_len(hash_name, attributes):
+    """
+    Validates the attribute type of hash_name and extracts the character length of hash.
+
+    :returns: 
+        - assertion error if validation fails
+        - hash character length (int) if validation passes
+    """
+
+    hash_type = attributes[hash_name].type
+    _, m, e = hash_type.rpartition('varchar')
+    assert m == 'varchar', 'hash_name attribute must be of varchar type'
+
+    hash_len_match = re.findall('[0-9]+', e)
+    assert hash_len_match and hash_len_match[0].isdigit(), 'hash_name attribute must contain a numeric value specifying hash character length.'
+    
+    hash_len = int(hash_len_match[0])
+    assert hash_len > 0 and hash_len <= 32, 'hash character length must be within range: [1, 32].'
+
+    return hash_len
+
+
 class Base:
     _is_insert_validated = False
     _enable_table_modification = True
@@ -438,34 +460,7 @@ class Base:
         Note: The projection is NOT guaranteed to have unique rows, even if it contains only primary keys. 
         """
         return cls.proj(..., **{a: '""' for a in cls.heading.names if a in args}).proj(*[a for a in cls.heading.names if a not in args])
-          
-    @classmethod
-    def _parse_hash_name_attribute(cls, source='self'):
-        """
-        Computes length of hash_name attribute in DataJoint table heading.
-
-        :param source (str): the source of DataJoint heading to check
-            - self: checks own heading
-            - master: checks master table heading (only for part tables)
-
-        :returns: 
-            - hash type (str)
-            - hash len (int)
-        """
-
-        if source == 'self':
-            attributes = cls.heading.attributes
-
-        elif source == 'master':
-            attributes = cls.master.heading.attributes
-        
-        else:
-            raise ValueError(f'heading source: {source} not recognized.')
-
-        hash_type, hash_len = re.findall('\w+', attributes[cls.hash_name].type)
-
-        return hash_type, int(hash_len)
-    
+             
     @classmethod
     def hash1(cls, rows, **kwargs):
         """
@@ -698,14 +693,8 @@ class MasterBase(Base):
     def _hash_name_validation(cls):
         """
         Validates hash_name and sets hash_len
-        """
-        hash_type, hash_len = cls._parse_hash_name_attribute()
-
-        if hash_type != 'varchar' or not (hash_len > 0 and hash_len <= 32):
-            raise ValidationError(f'hash_name "{cls.hash_name}" must be a "varchar" type > 0 and <= 32 characters')
-        
-        cls._hash_len = hash_len
-
+        """       
+        cls._hash_len = _validate_hash_name_type_and_parse_hash_len(cls.hash_name, cls.heading.attributes)
         cls._is_hash_name_validated = True
 
     @classmethod
@@ -1043,20 +1032,14 @@ class PartBase(Base):
 
         part_hash_len = None
         if cls.hash_name in cls.heading.names:
-            part_hash_type, part_hash_len = cls._parse_hash_name_attribute()
-            
-            if part_hash_type != 'varchar' or not (part_hash_len > 0 and part_hash_len <= 32):
-                raise ValidationError(f'hash_name "{cls.hash_name}" must be a "varchar" type > 0 and <= 32 characters')
+            part_hash_len = _validate_hash_name_type_and_parse_hash_len(cls.hash_name, cls.heading.attributes)
 
         master_hash_len = None
         if cls.hash_name in cls.master.heading.names:
-            master_hash_type, master_hash_len = cls._parse_hash_name_attribute(source='master')
-            
-            if master_hash_type != 'varchar' or not (master_hash_len > 0 and master_hash_len <= 32):
-                raise ValidationError(f'hash_name "{cls.hash_name}" must be a "varchar" type > 0 and <= 32 characters')
+            master_hash_len = _validate_hash_name_type_and_parse_hash_len(cls.hash_name, cls.master.heading.attributes)
 
         if part_hash_len and master_hash_len:
-            assert part_hash_len == master_hash_len, f'hash_name "{cls.hash_name}" varchar length mismatch. Part table length is {part_hash_len} but master length is {master_hash_len}'        
+            assert part_hash_len == master_hash_len, f'hash_name "{cls.hash_name}" varchar length mismatch. Part table length is {part_hash_len} but master length is {master_hash_len}.'        
             cls._hash_len = part_hash_len
         
         elif part_hash_len:

@@ -288,12 +288,18 @@ def _validate_hash_name_type_and_parse_hash_len(hash_name, attributes):
     """
     Validates the attribute type of hash_name and extracts the character length of hash.
 
+    :param hash_name: (str) hash_name to validate.
+    :param attributes: (dict) dj_table.heading.attributes dictionary that hash_name will index into.
+
     :returns: 
-        - assertion error if validation fails
+        - error if validation fails
         - hash character length (int) if validation passes
     """
+    try:
+        hash_type = attributes[hash_name].type
+    except KeyError:
+        raise KeyError(f'hash_name "{hash_name}" not found in attributes.') from None
 
-    hash_type = attributes[hash_name].type
     _, m, e = hash_type.rpartition('varchar')
     assert m == 'varchar', 'hash_name attribute must be of varchar type'
 

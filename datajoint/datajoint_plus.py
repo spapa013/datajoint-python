@@ -774,7 +774,7 @@ class MasterBase(Base):
         return new
 
     @classmethod
-    def union_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, filter_out_len_zero=False, as_cls=True, reload_dependencies=False):
+    def union_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, filter_out_len_zero=False, reload_dependencies=False):
         """
         Returns union of part table primary keys after optional restriction. Requires all part tables in union to have identical primary keys. 
 
@@ -782,14 +782,14 @@ class MasterBase(Base):
 
         :returns: numpy array object
         """  
-        return np.sum([p.proj() for p in cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, as_cls=as_cls, reload_dependencies=reload_dependencies)])
+        return np.sum([p.proj() for p in cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, reload_dependencies=reload_dependencies)])
 
 #     @classmethod
 #     def keys_not_in_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, master_restr={}, parts_kws={}):
 #         return (cls & master_restr) - cls.union_parts(include_parts=include_parts, exclude_parts=exclude_parts, part_restr=part_restr, parts_kws=parts_kws)
 
     @classmethod
-    def join_parts(cls, part_restr={}, join_method=None, join_with_master=False, include_parts=None, exclude_parts=None, filter_out_len_zero=False, as_cls=True, reload_dependencies=False):
+    def join_parts(cls, part_restr={}, join_method=None, join_with_master=False, include_parts=None, exclude_parts=None, filter_out_len_zero=False, reload_dependencies=False):
         """
         Returns join of part tables after optional restriction. 
 
@@ -804,7 +804,7 @@ class MasterBase(Base):
 
         :returns: numpy array object
         """
-        parts = cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, as_cls=as_cls, reload_dependencies=reload_dependencies)
+        parts = cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, reload_dependencies=reload_dependencies)
         
         if join_with_master:
             parts = [FreeTable(cls.connection, cls.full_table_name)] + parts
@@ -857,7 +857,7 @@ class MasterBase(Base):
         return np.product(renamed_parts)
     
     @classmethod
-    def restrict_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, filter_out_len_zero=False, as_cls=True, reload_dependencies=False):
+    def restrict_parts(cls, part_restr={}, include_parts=None, exclude_parts=None, filter_out_len_zero=False, reload_dependencies=False):
         """
         Restricts part tables of cls. 
 
@@ -870,7 +870,7 @@ class MasterBase(Base):
         assert cls.has_parts(reload_dependencies=reload_dependencies), 'No part tables found. If you are expecting part tables, try with reload_dependencies=True.'
 
         if include_parts is None:
-            parts = cls.parts(as_cls=as_cls) if as_cls else cls.parts(as_objects=True)
+            parts = cls.parts(as_cls=True)
         
         else:
             parts = cls._format_parts(include_parts)
@@ -883,7 +883,7 @@ class MasterBase(Base):
         return  parts if not filter_out_len_zero else [p for p in parts if len(p)>0]
     
     @classmethod
-    def restrict_one_part(cls, part_restr={}, include_parts=None, exclude_parts=None, filter_out_len_zero=True, as_cls=True, reload_dependencies=False):
+    def restrict_one_part(cls, part_restr={}, include_parts=None, exclude_parts=None, filter_out_len_zero=True, reload_dependencies=False):
         """
         Calls `restrict_parts` with filter_out_len_zero=True by default. If not exactly one part table is returned, then a ValidationError will be raised.
 
@@ -894,7 +894,7 @@ class MasterBase(Base):
 
         :returns: part table after restriction.
         """
-        parts = cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, as_cls=as_cls, reload_dependencies=reload_dependencies)
+        parts = cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, reload_dependencies=reload_dependencies)
 
         if len(parts) > 1:
             raise ValidationError('part_restr can restrict multiple part tables.')
@@ -908,7 +908,7 @@ class MasterBase(Base):
     r1p = restrict_one_part # alias for restrict_one_part
 
     @classmethod
-    def part_table_names_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, filter_out_len_zero=True, as_cls=True, reload_dependencies=False):
+    def part_table_names_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, filter_out_len_zero=True, reload_dependencies=False):
         """
         Calls `restrict_parts_with_hash` with filter_out_len_zero=True by default.
 
@@ -916,11 +916,11 @@ class MasterBase(Base):
 
         :returns: list of part table names that contain hash.
         """
-        parts = cls.restrict_parts_with_hash(hash=hash, hash_name=hash_name, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, as_cls=as_cls, reload_dependencies=reload_dependencies)
+        parts = cls.restrict_parts_with_hash(hash=hash, hash_name=hash_name, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, reload_dependencies=reload_dependencies)
         return [format_table_name(r.table_name, part=True) for r in parts]
 
     @classmethod
-    def restrict_one_part_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, filter_out_len_zero=True, as_cls=True, reload_dependencies=False):
+    def restrict_one_part_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, filter_out_len_zero=True, reload_dependencies=False):
         """
         Calls `restrict_parts_with_hash` with filter_out_len_zero=True by default. If not exactly one part table is returned, then a ValidationError will be raised.
 
@@ -928,7 +928,7 @@ class MasterBase(Base):
 
         :returns: part table after restriction
         """
-        parts = cls.restrict_parts_with_hash(hash=hash, hash_name=hash_name, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, as_cls=as_cls, reload_dependencies=reload_dependencies)
+        parts = cls.restrict_parts_with_hash(hash=hash, hash_name=hash_name, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, reload_dependencies=reload_dependencies)
 
         if len(parts) > 1:
             raise ValidationError('Hash found in multiple part tables.')
@@ -942,7 +942,7 @@ class MasterBase(Base):
     r1pwh = restrict_one_part_with_hash # alias for restrict_one_part_with_hash
 
     @classmethod
-    def restrict_parts_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, filter_out_len_zero=False, as_cls=True, reload_dependencies=False):
+    def restrict_parts_with_hash(cls, hash, hash_name=None, include_parts=None, exclude_parts=None, filter_out_len_zero=False, reload_dependencies=False):
         """
         Checks all part tables and returns the part table that is successfully restricted by {'hash_name': hash}. 
 
@@ -964,12 +964,12 @@ class MasterBase(Base):
         if hash_name is None:
             raise ValidationError('Table does not have "hash_name" defined, provide it to restrict with hash.')
         
-        parts = cls.restrict_parts(part_restr={hash_name: hash}, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, as_cls=as_cls, reload_dependencies=reload_dependencies)
+        parts = cls.restrict_parts(part_restr={hash_name: hash}, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, reload_dependencies=reload_dependencies)
 
         return [p for p in parts if hash_name in p.heading.names]
     
     @classmethod
-    def hashes_not_in_parts(cls, hash_name=None, part_restr={}, include_parts=None, exclude_parts=None, filter_out_len_zero=False, as_cls=True, reload_dependencies=False):
+    def hashes_not_in_parts(cls, hash_name=None, part_restr={}, include_parts=None, exclude_parts=None, filter_out_len_zero=False, reload_dependencies=False):
         """
         Restricts master table to any hashes not found in any of its part tables.
 
@@ -984,7 +984,7 @@ class MasterBase(Base):
         if hash_name is None:
             raise ValidationError('Table does not have "hash_name" defined, provide it to restrict with hash.')
 
-        return cls - np.sum([(dj.U(cls.hash_name) & p) for p in cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, as_cls=as_cls, reload_dependencies=reload_dependencies)])
+        return cls - np.sum([(dj.U(cls.hash_name) & p) for p in cls.restrict_parts(part_restr=part_restr, include_parts=include_parts, exclude_parts=exclude_parts, filter_out_len_zero=filter_out_len_zero, reload_dependencies=reload_dependencies)])
 
     @classmethod
     def insert(cls, rows, replace=False, skip_duplicates=False, ignore_extra_fields=False, allow_direct_insert=None, reload_dependencies=False, insert_to_parts=None, insert_to_parts_kws={}, skip_hashing=False, constant_attrs={}, overwrite_rows=False):

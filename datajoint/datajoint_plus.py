@@ -863,9 +863,9 @@ class MasterBase(Base):
 
         :param part_restr: restriction to restrict part tables with.
         :param include_parts (part table or list of part tables): part table(s) to restrict. If None, will restrict all part tables of cls.
-        :param exclude_parts (part table or list of part tables): part table(s) to exclude from restriction
+        :param exclude_parts (part table or list of part tables): part table(s) to exclude from restriction.
         :param filter_out_len_zero (bool): If True, parts with len = 0 after restriction are excluded from list.
-        :params as_cls, reload_dependencies: see cls.parts()
+        :param reload_dependencies (bool): reloads DataJoint graph dependencies.
         """
         assert cls.has_parts(reload_dependencies=reload_dependencies), 'No part tables found. If you are expecting part tables, try with reload_dependencies=True.'
 
@@ -954,7 +954,7 @@ class MasterBase(Base):
 
         :param hash: hash to restrict with
         :param hash_name: name of attribute that contains hash. If hash_name is None, cls.hash_name will be used.
-        :params include_parts, exclude_parts, as_cls, reload_dependencies: see `restrict_parts`
+        :params include_parts, exclude_parts, reload_dependencies: see `restrict_parts`
 
         :returns: list of part tables after restriction
         """  
@@ -974,7 +974,7 @@ class MasterBase(Base):
         Restricts master table to any hashes not found in any of its part tables.
 
         :param hash_name: name of attribute that contains hash. If hash_name is None, cls.hash_name will be used.
-        :params part_restr, include_parts, exclude_parts, as_cls, reload_dependencies: see `restrict_parts`
+        :params part_restr, include_parts, exclude_parts, reload_dependencies: see `restrict_parts`
 
         :returns: cls after restriction
         """

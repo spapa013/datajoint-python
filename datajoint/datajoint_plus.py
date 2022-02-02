@@ -154,8 +154,6 @@ def format_rows_to_df(rows):
     else:
         raise ValidationError('Format of rows not recognized. Try inserting a list of dictionaries, a DataJoint expression or a pandas dataframe.')
 
-    assert "index" not in rows.columns, 'rows cannot contain an attribute named "index".'
-
     return rows
 
 

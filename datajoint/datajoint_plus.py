@@ -59,7 +59,9 @@ def generate_hash(rows, add_constant_columns:dict=None):
         assert isinstance(add_constant_columns, dict), f' arg add_constant_columns must be Python dictionary instance.'
         for k, v in add_constant_columns.items():
             df[k] = v
-    df.sort_values(by=df.sort_index(axis=1).columns.tolist()) # permutation invariant
+    # permutation invariant hashing
+    df = df.sort_index(axis=1)
+    df = df.sort_values(by=df.columns.tolist()) 
     encoded = simplejson.dumps(df.to_dict(orient='records')).encode()
     dhash = hashlib.md5()
     dhash.update(encoded)

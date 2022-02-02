@@ -679,7 +679,7 @@ class MasterBase(Base):
         """
         if cls.hash_name is not None:
             if cls.hash_name not in cls.heading.names:
-                raise ValidationError(f'Attribute "{cls.hash_name}" in property "hash_name" must be present in table heading.')
+                raise ValidationError(f'hash_name "{cls.hash_name}" must be present in table heading.')
 
             # hash_name validation
             if not cls._is_hash_name_validated:

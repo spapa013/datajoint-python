@@ -24,6 +24,7 @@ import copy
 import logging
 from .table import FreeTable
 from .user_tables import UserTable
+from .utils import to_camel_case
 from itertools import combinations
 
 __version__ = "0.0.18"
@@ -703,6 +704,10 @@ class MasterBase(Base):
         cls._hash_len = _validate_hash_name_type_and_parse_hash_len(cls.hash_name, cls.heading.attributes)
         cls._is_hash_name_validated = True
 
+    @classproperty
+    def class_name(cls):
+        return to_camel_case(cls.table_name)
+
     @classmethod
     def parts(cls, as_objects=False, as_cls=False, reload_dependencies=False):
         """
@@ -1056,6 +1061,11 @@ class PartBase(Base):
 
         cls._is_hash_name_validated = True
 
+    @classproperty
+    def class_name(cls):
+        groups = re.fullmatch(dj.Part.tier_regexp, cls.table_name).groupdict()
+        return '.'.join([to_camel_case(groups['master']), to_camel_case(groups['part'])])
+
     @classmethod
     def insert_validation(cls):
         """
@@ -1127,6 +1137,7 @@ class Imported(MasterBase, dj.Imported):
 
 class Part(PartBase, dj.Part):
     pass
+
 
 # Utilities
 

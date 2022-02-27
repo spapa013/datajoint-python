@@ -497,6 +497,10 @@ class Base:
         return cls.add_hash_to_rows(rows, **kwargs)[cls.hash_name].unique().tolist() if unique else cls.add_hash_to_rows(rows, **kwargs)[cls.hash_name].tolist()
 
     @classmethod
+    def get(cls, key):
+        return (cls & key).fetch1()
+
+    @classmethod
     def restrict_with_hash(cls, hash, hash_name=None):
         """
         Returns table restricted with hash. 

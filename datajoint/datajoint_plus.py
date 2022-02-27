@@ -547,8 +547,8 @@ class Base:
             if add_hash_table_name:
                 header += f" | hash_table_name = True;" 
             
-            if add_hash_part_table_names:
-                header += f" | hash_part_table_names = True;" 
+            if not add_hash_part_table_names:
+                header += f" | hash_part_table_names = False;" 
 
             if add_hashed_attrs:
                 header += f" | hashed_attrs = "
@@ -665,7 +665,7 @@ class Base:
 
 
 class MasterBase(Base):
-    hash_part_table_names = False
+    hash_part_table_names = True
     _is_hash_name_validated = False
 
     def __init_subclass__(cls, **kwargs):

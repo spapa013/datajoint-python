@@ -378,14 +378,19 @@ class Base:
                     cls._must_be_disjoint[name] = set(attr)
         pairwise_disjoint_set_validation(list(cls._must_be_disjoint.values()), list(cls._must_be_disjoint.keys()), error=NotImplementedError)
 
+        # set kwarg defaults
+        kwargs.setdefault('hash_part_table_names', None)
+
         # modify header
-        cls._add_hash_info_to_header(
-            add_hash_name=cls.hash_name is not None and cls._add_hash_name_to_header, 
-            add_hashed_attrs=cls.hashed_attrs is not None and cls._add_hashed_attrs_to_header,
-            add_hash_group=cls.hash_group and cls._add_hash_params_to_header,
-            add_hash_table_name=cls.hash_table_name and cls._add_hash_params_to_header,
-            add_hash_part_table_names='hash_part_table_names' in kwargs and not kwargs['hash_part_table_names'] and cls._add_hash_params_to_header,
+        hash_info_dict = dict(
+            hash_name=cls.hash_name if cls._add_hash_name_to_header else None,
+            hashed_attrs=cls.hashed_attrs if cls._add_hashed_attrs_to_header else None,
+            hash_group=True if cls.hash_group and cls._add_hash_params_to_header else None, # only add if set to True (default is False)
+            hash_table_name=True if cls.hash_table_name and cls._add_hash_params_to_header else None, # only add if set to True (default is False)
+            hash_part_table_names=False if kwargs['hash_part_table_names'] is False and cls._add_hash_params_to_header else None # only add if set to False (default is True)
         )
+
+        cls._add_hash_info_to_header(**hash_info_dict)
 
     @classproperty
     def hash_len(cls):
@@ -523,13 +528,21 @@ class Base:
         return cls & {cls.hash_name: hash}
 
     @classmethod
-    def _add_hash_info_to_header(cls, add_hash_name=False, add_hashed_attrs=False, add_hash_group=False, add_hash_table_name=False, add_hash_part_table_names=False):
+    def _add_hash_info_to_header(cls, **kwargs):
         """
         Modifies definition header to include hash_name and hashed_attrs with a parseable syntax. 
 
         :param add_hash_name (bool): Whether to add hash_name to header
         :param add_hashed_attrs (bool): Whether to add hashed_attrs to header
         """
+        # set defaults
+        kwargs.setdefault('hash_name', None)
+        kwargs.setdefault('hashed_attrs', None)
+        kwargs.setdefault('hash_group', None)
+        kwargs.setdefault('hash_table_name', None)
+        kwargs.setdefault('hash_part_table_names', None)
+
+
         if hasattr(cls, 'definition') and isinstance(cls.definition, str):
             inds, contents, _ = parse_definition(cls.definition)
             headers = contents['headers']
@@ -542,22 +555,14 @@ class Base:
                 header = """#"""
 
             # append hash info to header
-            if add_hash_name:
-                header += f" | hash_name = {cls.hash_name};" 
-            
-            if add_hash_group:
-                header += f" | hash_group = True;" 
-            
-            if add_hash_table_name:
-                header += f" | hash_table_name = True;" 
-            
-            if add_hash_part_table_names:
-                header += f" | hash_part_table_names = False;" 
+            for attr in ['hash_name', 'hash_group', 'hash_table_name', 'hash_part_table_names']:
+                if kwargs[attr] is not None:
+                    header += f" | {attr} = {kwargs[attr]};" 
 
-            if add_hashed_attrs:
+            if kwargs['hashed_attrs'] is not None:
                 header += f" | hashed_attrs = "
-                for i, h in enumerate(cls.hashed_attrs):
-                    header += f"{h}, " if i+1 < len(cls.hashed_attrs) else f"{h};"
+                for i, h in enumerate(kwargs['hashed_attrs']):
+                    header += f"{h}, " if i+1 < len(kwargs['hashed_attrs']) else f"{h};"
             
             try:
                 # replace existing header with modified header

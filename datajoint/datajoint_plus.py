@@ -1118,6 +1118,13 @@ class PartBase(Base):
         else:
             super().insert(cls(), rows=rows, replace=replace, skip_duplicates=skip_duplicates, ignore_extra_fields=ignore_extra_fields, allow_direct_insert=allow_direct_insert)
 
+class Autopopulate:
+    @classmethod
+    def populate(cls, *args, **kwargs):
+        if 'reload_dependencies' in kwargs:
+            kwargs.pop('reload_dependencies')
+            cls.reload_dependencies()
+        super().populate(*args, **kwargs)
 
 class Lookup(MasterBase, dj.Lookup):
     pass
@@ -1127,11 +1134,11 @@ class Manual(MasterBase, dj.Manual):
     pass
 
 
-class Computed(MasterBase, dj.Computed):
+class Computed(MasterBase, dj.Computed, Autopopulate):
     pass
 
 
-class Imported(MasterBase, dj.Imported):
+class Imported(MasterBase, dj.Imported, Autopopulate):
     pass
 
 

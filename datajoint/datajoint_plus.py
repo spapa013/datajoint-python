@@ -384,7 +384,7 @@ class Base:
             add_hashed_attrs=cls.hashed_attrs is not None and cls._add_hashed_attrs_to_header,
             add_hash_group=cls.hash_group and cls._add_hash_params_to_header,
             add_hash_table_name=cls.hash_table_name and cls._add_hash_params_to_header,
-            add_hash_part_table_names='hash_part_table_names' in kwargs and kwargs['hash_part_table_names'] and cls._add_hash_params_to_header,
+            add_hash_part_table_names='hash_part_table_names' in kwargs and not kwargs['hash_part_table_names'] and cls._add_hash_params_to_header,
         )
 
     @classproperty
@@ -547,7 +547,7 @@ class Base:
             if add_hash_table_name:
                 header += f" | hash_table_name = True;" 
             
-            if not add_hash_part_table_names:
+            if add_hash_part_table_names:
                 header += f" | hash_part_table_names = False;" 
 
             if add_hashed_attrs:

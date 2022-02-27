@@ -593,20 +593,14 @@ class Base:
                 if result[0] == 'hash_name':
                     cls.hash_name = result[1]
 
-                if result[0] == 'hash_group':
-                    if result[1] == 'True':
-                        cls.hash_group = True
-
-                if result[0] == 'hash_table_name':
-                    if result[1] == 'True':
-                        cls.hash_table_name = True
-
-                if result[0] == 'hash_part_table_names':
-                    if result[1] == 'True':
-                        cls.hash_part_table_names = True
-
                 if result[0] == 'hashed_attrs':
                     cls.hashed_attrs = result[1:]
+                
+                # handle booleans
+                for attr in ['hash_group', 'hash_table_name', 'hash_part_table_names']:
+                    if result[0] == attr:
+                        if result[1] == 'True' or result[1] == 'False':
+                            setattr(cls, attr, eval(result[1]))
 
     @classmethod
     def add_hash_to_rows(cls, rows, overwrite_rows=False):

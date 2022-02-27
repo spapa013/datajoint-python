@@ -1118,7 +1118,8 @@ class PartBase(Base):
         else:
             super().insert(cls(), rows=rows, replace=replace, skip_duplicates=skip_duplicates, ignore_extra_fields=ignore_extra_fields, allow_direct_insert=allow_direct_insert)
 
-class Autopopulate:
+
+class AutoPopulate(dj.user_tables.AutoPopulate):
     @classmethod
     def populate(cls, *args, **kwargs):
         if 'reload_dependencies' in kwargs:
@@ -1134,11 +1135,11 @@ class Manual(MasterBase, dj.Manual):
     pass
 
 
-class Computed(MasterBase, dj.Computed, Autopopulate):
+class Computed(MasterBase, AutoPopulate, dj.Computed):
     pass
 
 
-class Imported(MasterBase, dj.Imported, Autopopulate):
+class Imported(MasterBase, AutoPopulate, dj.Imported):
     pass
 
 

@@ -154,6 +154,8 @@ def format_rows_to_df(rows):
         rows = pd.DataFrame(rows.fetch())
     elif isinstance(rows, list) or isinstance(rows, tuple):
         rows = pd.DataFrame(rows)
+    elif isinstance(rows, dict):
+        rows = pd.DataFrame([rows])
     else:
         raise ValidationError('Format of rows not recognized. Try inserting a list of dictionaries, a DataJoint expression or a pandas dataframe.')
 
